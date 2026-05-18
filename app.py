@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, session, redirect, url_for, Response, jsonify
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 import uuid
 import time
 import threading
@@ -55,30 +55,25 @@ def load_questions():
             {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
             {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
         ]
-    with open('questions.json', 'r', encoding='utf-8') as f:
-        qlist = json.load(f)
-        random.shuffle(qlist)
-        return qlist
+    for encoding in ['utf-8', 'cp1251', 'latin-1']:
+        try:
+            with open('questions.json', 'r', encoding=encoding) as f:
+                qlist = json.load(f)
+                random.shuffle(qlist)
+                print(f"Вопросы загружены (кодировка {encoding})")
+                return qlist
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+    return [
+        {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
+        {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
+    ]
 
 QUESTIONS = load_questions()
 ROUND_TIME = 25
 PAUSE_TIME = 5
 
 # ========== ИГРОВАЯ ЛОГИКА ==========
-event_streams = {}
-
-def send_event(sid, event, data):
-    if sid not in event_streams:
-        event_streams[sid] = []
-    event_streams[sid].append((event, data))
-
-def broadcast(room, event, data):
-    game = load_game(room)
-    if not game:
-        return
-    for sid in game['players']:
-        send_event(sid, event, data)
-
 def start_round(room):
     game = load_game(room)
     if not game:
@@ -95,14 +90,6 @@ def start_round(room):
     game['player_answers'] = [None, None]
     game['round_start_time'] = time.time()
     save_game(room, game)
-    
-    broadcast(room, 'new_question', {
-        'index': q_idx,
-        'text': q['question'],
-        'options': q['options'],
-        'time': ROUND_TIME,
-        'total': len(QUESTIONS)
-    })
     
     def timer():
         time.sleep(ROUND_TIME)
@@ -131,24 +118,6 @@ def finish_round(room):
     })
     game['round_active'] = False
     save_game(room, game)
-    
-    names = game['names']
-    messages = []
-    for i, ans in enumerate(answers):
-        if ans == correct:
-            messages.append(f"{names[i]} ответил правильно")
-        elif ans is not None and ans != -1:
-            messages.append(f"{names[i]} ответил неправильно")
-        else:
-            messages.append(f"{names[i]} не ответил")
-    
-    broadcast(room, 'round_result', {
-        'messages': messages,
-        'scores': new_scores,
-        'names': names,
-        'correct_index': correct,
-        'correct_text': game['current_question']['options'][correct]
-    })
     
     def next_round():
         time.sleep(PAUSE_TIME)
@@ -187,14 +156,12 @@ def end_game(room):
             'correct': h['correct']
         })
     
-    broadcast(room, 'game_over', {
-        'winner': winner,
-        'winner_score': winner_score,
-        'loser_score': loser_score,
-        'scores': scores,
-        'names': names,
-        'history': history_table
-    })
+    game['game_over'] = True
+    game['winner'] = winner
+    game['winner_score'] = winner_score
+    game['loser_score'] = loser_score
+    game['history_table'] = history_table
+    save_game(room, game)
     
     def clean():
         time.sleep(10)
@@ -227,7 +194,8 @@ def create():
         'answered': [False, False],
         'player_answers': [None, None],
         'round_start_time': 0,
-        'history': []
+        'history': [],
+        'game_over': False
     }
     save_game(room, game)
     print(f"[CREATE] room={room}, name={name}")
@@ -289,26 +257,42 @@ def game():
     name2 = names[1] if names[1] else "Игрок 2"
     return render_template('game.html', sid=sid, name=name, player_idx=player_idx, total_questions=len(QUESTIONS), name1=name1, name2=name2)
 
-@app.route('/check_players')
-def check_players():
-    room = request.args.get('room')
+@app.route('/state')
+def state():
+    room = session.get('room')
+    if not room:
+        return jsonify({'error': 'no room'})
     game = load_game(room)
-    if game:
-        return {'players': len(game['players'])}
-    return {'players': 0}
-
-@app.route('/stream')
-def stream():
-    sid = request.args.get('sid')
-    if not sid:
-        return "no sid", 400
-    def generate():
-        while True:
-            time.sleep(0.1)
-            if sid in event_streams and event_streams[sid]:
-                event, data = event_streams[sid].pop(0)
-                yield f"event: {event}\ndata: {json.dumps(data)}\n\n"
-    return Response(generate(), mimetype="text/event-stream")
+    if not game:
+        return jsonify({'error': 'no game'})
+    
+    state = {
+        'players': game['names'],
+        'scores': game['scores'],
+        'round_active': game['round_active'],
+        'q_idx': game['q_idx'],
+        'total_questions': len(QUESTIONS),
+        'game_over': game.get('game_over', False),
+        'winner': game.get('winner'),
+        'winner_score': game.get('winner_score'),
+        'loser_score': game.get('loser_score'),
+        'history_table': game.get('history_table', [])
+    }
+    
+    if game['round_active'] and game['current_question']:
+        elapsed = time.time() - game['round_start_time']
+        remaining = max(0, ROUND_TIME - int(elapsed))
+        state['question'] = game['current_question']['question']
+        state['options'] = game['current_question']['options']
+        state['time_left'] = remaining
+        state['correct_index'] = game['correct']
+        state['player_answers'] = game['player_answers']
+    else:
+        state['question'] = None
+        state['options'] = []
+        state['time_left'] = 0
+    
+    return jsonify(state)
 
 @app.route('/answer', methods=['POST'])
 def answer():
@@ -317,7 +301,7 @@ def answer():
     answer_idx = data.get('answer')
     room = session.get('room')
     if not room:
-        return jsonify({'error': 'no game'}), 400
+        return jsonify({'error': 'no room'}), 400
     game = load_game(room)
     if not game or not game.get('round_active'):
         return jsonify({'error': 'round not active'}), 400
@@ -327,7 +311,18 @@ def answer():
     game['player_answers'][player_idx] = answer_idx
     game['answered'][player_idx] = True
     save_game(room, game)
+    # Если оба ответили, завершаем раунд
+    if all(game['answered']):
+        finish_round(room)
     return jsonify({'ok': True})
+
+@app.route('/check_players')
+def check_players():
+    room = request.args.get('room')
+    game = load_game(room)
+    if game:
+        return {'players': len(game['players'])}
+    return {'players': 0}
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

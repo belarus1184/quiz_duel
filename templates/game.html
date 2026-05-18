@@ -241,6 +241,7 @@
     let selectedBtn = null;
     let gameActive = true;
     let pollInterval = null;
+    let roundResultShown = false;
     
     // Функция загрузки состояния с сервера
     function fetchState() {
@@ -272,7 +273,7 @@
                         message = `Итог игры: Игрок ${state.winner} победил со счётом ${state.winner_score} : ${state.loser_score}`;
                     }
                     // Построение таблицы истории
-                    let historyHtml = '<div class="final-table">\n<table>\n<thead>\n<tr>\n<th>Вопрос</th>\n<th>' + state.players[0] + '</th>\n<th>' + state.players[1] + '</th>\n</tr>\n</thead>\n<tbody>';
+                    let historyHtml = '<div class="final-table"><table><thead><tr><th>Вопрос</th><th>' + state.players[0] + '</th><th>' + state.players[1] + '</th></tr></thead><tbody>';
                     if (state.history_table) {
                         for (let q of state.history_table) {
                             let ans1 = q.answer1;
@@ -280,10 +281,10 @@
                             let correct = q.correct;
                             let status1 = (ans1 === correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
                             let status2 = (ans2 === correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
-                            historyHtml += `<tr>\n<td>${q.question.substring(0, 70)}...</td>\n<td>${status1}</td>\n<td>${status2}</td>\n</tr>`;
+                            historyHtml += `<tr><td>${q.question.substring(0, 70)}...</td><td>${status1}</td><td>${status2}</td></tr>`;
                         }
                     }
-                    historyHtml += '</tbody>\n</table>\n</div>';
+                    historyHtml += '</tbody></table></div>';
                     document.getElementById('question').innerHTML = message.replace(/\n/g, '<br>') + historyHtml;
                     document.getElementById('options').innerHTML = '';
                     document.getElementById('timer').style.display = 'none';
@@ -295,6 +296,7 @@
                 if (state.round_active && state.question) {
                     if (currentQ !== state.q_idx) {
                         // Новый вопрос
+                        roundResultShown = false;
                         currentQ = state.q_idx;
                         canAnswer = true;
                         document.getElementById('questionCounter').innerHTML = `Вопрос ${currentQ+1} из ${state.total_questions}`;
@@ -322,36 +324,47 @@
                             optsDiv.appendChild(btn);
                         });
                         if (timerInt) clearInterval(timerInt);
-                    }
-                    // Обновляем таймер
-                    const timeLeft = state.time_left;
-                    document.getElementById('timer').innerText = `⏱️ ${timeLeft}`;
-                    if (timeLeft <= 0) {
-                        document.getElementById('timer').innerText = '⏰ 0';
-                        canAnswer = false;
-                    }
-                } else if (!state.round_active && !state.game_over && currentQ !== -1) {
-                    // Раунд завершён – показываем модальное окно с результатами
-                    if (state.player_answers && state.correct_index !== undefined) {
-                        const correctText = state.options ? state.options[state.correct_index] : "";
-                        const messages = [];
-                        for (let i = 0; i < 2; i++) {
-                            let ans = state.player_answers[i];
-                            if (ans === state.correct_index) messages.push(`${state.players[i]} ответил правильно`);
-                            else if (ans !== undefined && ans !== null && ans !== -1) messages.push(`${state.players[i]} ответил неправильно`);
-                            else messages.push(`${state.players[i]} не ответил`);
+                        // Запускаем локальный таймер для отображения
+                        let timeLeft = state.time_left;
+                        const timerElem = document.getElementById('timer');
+                        timerElem.innerText = `⏱️ ${timeLeft}`;
+                        timerInt = setInterval(() => {
+                            timeLeft--;
+                            timerElem.innerText = `⏱️ ${timeLeft}`;
+                            if (timeLeft <= 0) {
+                                clearInterval(timerInt);
+                                timerElem.innerText = '⏰ 0';
+                                canAnswer = false;
+                            }
+                        }, 1000);
+                    } else {
+                        // Обновляем таймер
+                        const timeLeft = state.time_left;
+                        document.getElementById('timer').innerText = `⏱️ ${timeLeft}`;
+                        if (timeLeft <= 0) {
+                            clearInterval(timerInt);
+                            document.getElementById('timer').innerText = '⏰ 0';
+                            canAnswer = false;
                         }
+                    }
+                } else if (!state.round_active && state.q_idx > 0 && !roundResultShown && !state.game_over) {
+                    // Раунд завершён – показываем модальное окно с результатами
+                    if (state.round_result) {
+                        roundResultShown = true;
+                        const messages = state.round_result.messages;
                         const modal = document.getElementById('resultModal');
                         document.getElementById('modalResults').innerHTML = messages.map(msg => {
                             if (msg.includes('правильно')) return `<div>✅ ${msg}</div>`;
                             else return `<div>❌ ${msg}</div>`;
-                        }).join('') + `<div>Промежуточный счёт: ${state.scores[0]} : ${state.scores[1]}</div>`;
-                        document.getElementById('modalCorrect').innerHTML = `✅ Правильный ответ: ${correctText}`;
+                        }).join('') + `<div>Промежуточный счёт: ${state.round_result.scores[0]} : ${state.round_result.scores[1]}</div>`;
+                        document.getElementById('modalCorrect').innerHTML = `✅ Правильный ответ: ${state.round_result.correct_text}`;
                         modal.classList.add('visible');
                         setTimeout(() => modal.classList.remove('visible'), 4000);
+                        // Очищаем кнопки ответов
+                        document.getElementById('options').innerHTML = '';
+                        canAnswer = false;
+                        if (timerInt) clearInterval(timerInt);
                     }
-                    // Сбрасываем флаг, чтобы не показывать модалку повторно
-                    currentQ = -1;
                 }
             })
             .catch(err => console.log('Ошибка запроса состояния:', err));

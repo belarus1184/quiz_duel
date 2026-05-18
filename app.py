@@ -89,12 +89,13 @@ def start_round(room):
     game['answered'] = [False, False]
     game['player_answers'] = [None, None]
     game['round_start_time'] = time.time()
+    game['round_finished'] = False
     save_game(room, game)
     
     def timer():
         time.sleep(ROUND_TIME)
         game_check = load_game(room)
-        if game_check and game_check.get('round_active'):
+        if game_check and game_check.get('round_active') and not game_check.get('round_finished'):
             finish_round(room)
     threading.Thread(target=timer, daemon=True).start()
 
@@ -102,13 +103,19 @@ def finish_round(room):
     game = load_game(room)
     if not game or not game.get('round_active'):
         return
+    game['round_finished'] = True
+    game['round_active'] = False
+    
     correct = game['correct']
     answers = game['player_answers']
+    # Подсчёт очков
     new_scores = game['scores'][:]
     for i, ans in enumerate(answers):
         if ans == correct:
             new_scores[i] += 1
     game['scores'] = new_scores
+    
+    # Сохраняем в историю
     if 'history' not in game:
         game['history'] = []
     game['history'].append({
@@ -116,7 +123,6 @@ def finish_round(room):
         'answers': answers.copy(),
         'correct': correct
     })
-    game['round_active'] = False
     save_game(room, game)
     
     def next_round():
@@ -124,6 +130,7 @@ def finish_round(room):
         game_check = load_game(room)
         if game_check:
             game_check['q_idx'] += 1
+            game_check['round_finished'] = False
             save_game(room, game_check)
             start_round(room)
     threading.Thread(target=next_round, daemon=True).start()
@@ -189,6 +196,7 @@ def create():
         'scores': [0, 0],
         'q_idx': 0,
         'round_active': False,
+        'round_finished': False,
         'current_question': None,
         'correct': None,
         'answered': [False, False],
@@ -287,10 +295,25 @@ def state():
         state['time_left'] = remaining
         state['correct_index'] = game['correct']
         state['player_answers'] = game['player_answers']
+        state['round_finished'] = False
     else:
         state['question'] = None
         state['options'] = []
         state['time_left'] = 0
+        # Если раунд не активен и есть результаты, отправляем их для модального окна
+        if not game['round_active'] and not game['game_over'] and game.get('current_question') and game.get('player_answers'):
+            state['round_result'] = {
+                'messages': [
+                    f"{game['names'][0]} ответил правильно" if game['player_answers'][0] == game['correct'] else
+                    f"{game['names'][0]} ответил неправильно" if game['player_answers'][0] is not None else
+                    f"{game['names'][0]} не ответил",
+                    f"{game['names'][1]} ответил правильно" if game['player_answers'][1] == game['correct'] else
+                    f"{game['names'][1]} ответил неправильно" if game['player_answers'][1] is not None else
+                    f"{game['names'][1]} не ответил"
+                ],
+                'scores': game['scores'],
+                'correct_text': game['current_question']['options'][game['correct']]
+            }
     
     return jsonify(state)
 

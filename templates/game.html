@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
     <title>Викторина-Дуэль — Кто умнее?</title>
     <style>
-        /* ваши стили (оставьте без изменений) */
         * { margin:0; padding:0; box-sizing:border-box; }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -179,28 +178,6 @@
             color: white !important;
             font-weight: bold;
         }
-        .final-table {
-            margin-top: 20px;
-            background: #0f172a;
-            border-radius: 24px;
-            overflow-x: auto;
-        }
-        .final-table table {
-            width: 100%;
-            border-collapse: collapse;
-            color: #e2e8f0;
-        }
-        .final-table th, .final-table td {
-            padding: 10px;
-            text-align: left;
-            border-bottom: 1px solid #334155;
-        }
-        .final-table th {
-            background: #1e293b;
-            color: #facc15;
-        }
-        .tick { color: #86efac; font-weight: bold; }
-        .cross { color: #fecaca; font-weight: bold; }
         @media (max-width: 680px) {
             .options { grid-template-columns: 1fr; }
             .question { font-size: 1.2rem; }
@@ -260,6 +237,7 @@
                     document.getElementById('label2').innerText = state.players[1];
                 }
                 
+                // Окончание игры
                 if (state.game_over) {
                     if (pollInterval) clearInterval(pollInterval);
                     gameActive = false;
@@ -271,26 +249,17 @@
                     } else {
                         message = `Итог игры: Игрок ${state.winner} победил со счётом ${state.winner_score} : ${state.loser_score}`;
                     }
-                    let historyHtml = '<div class="final-table"></td><thead><tr><th>Вопрос</th><th>' + state.players[0] + '</th><th>' + state.players[1] + '</th></tr></thead><tbody>';
-                    if (state.history_table) {
-                        for (let q of state.history_table) {
-                            let status1 = (q.answer1 === q.correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
-                            let status2 = (q.answer2 === q.correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
-                            historyHtml += `<tr><td>${q.question.substring(0, 70)}...</td><td>${status1}</td><td>${status2}</td></tr>`;
-                        }
-                    }
-                    historyHtml += '</tbody></table></div>';
-                    document.getElementById('question').innerHTML = message.replace(/\n/g, '<br>') + historyHtml;
+                    document.getElementById('question').innerHTML = message.replace(/\n/g, '<br>');
                     document.getElementById('options').innerHTML = '';
                     document.getElementById('timer').style.display = 'none';
                     document.getElementById('questionCounter').innerHTML = '';
                     return;
                 }
                 
-                // Если раунд активен
+                // Активный раунд
                 if (state.round_active && state.question) {
                     if (currentQ !== state.q_idx) {
-                        // Новый вопрос – сброс состояния
+                        // Новый вопрос
                         currentQ = state.q_idx;
                         canAnswer = true;
                         roundResultShown = false;
@@ -304,11 +273,11 @@
                             btn.classList.add('option-btn');
                             btn.onclick = () => {
                                 if (!canAnswer || !gameActive) return;
-                                // Снимаем выделение с предыдущей кнопки (если есть)
+                                // Снимаем выделение с предыдущей кнопки
                                 if (selectedBtn) selectedBtn.classList.remove('selected');
                                 btn.classList.add('selected');
                                 selectedBtn = btn;
-                                // Отправляем новый ответ на сервер (перезаписывает предыдущий)
+                                // Отправляем ответ (перезаписывает предыдущий)
                                 fetch('/answer', {
                                     method: 'POST',
                                     headers: {'Content-Type': 'application/json'},
@@ -319,7 +288,7 @@
                         });
                         if (timerInt) clearInterval(timerInt);
                     }
-                    // Обновляем таймер (только отображение, решение о завершении раунда принимает сервер)
+                    // Обновляем таймер
                     const timeLeft = state.time_left;
                     if (timeLeft !== lastTimeLeft) {
                         document.getElementById('timer').innerText = `⏱️ ${timeLeft}`;
@@ -331,19 +300,23 @@
                         if (timerInt) clearInterval(timerInt);
                     }
                 } 
-                // Раунд завершён – показываем модальное окно (один раз)
+                // Раунд завершён – показываем модальное окно (только один раз)
                 else if (!state.round_active && !roundResultShown && !state.game_over && state.q_idx > 0) {
                     if (state.round_result) {
                         roundResultShown = true;
                         const messages = state.round_result.messages;
                         const modal = document.getElementById('resultModal');
-                        document.getElementById('modalResults').innerHTML = messages.map(msg => 
-                            msg.includes('правильно') ? `<div>✅ ${msg}</div>` : `<div>❌ ${msg}</div>`
-                        ).join('') + `<div>Промежуточный счёт: ${state.round_result.scores[0]} : ${state.round_result.scores[1]}</div>`;
+                        // Правильные ответы – зелёная галочка, неправильные – красный крестик
+                        document.getElementById('modalResults').innerHTML = messages.map(msg => {
+                            if (msg.includes('правильно')) {
+                                return `<div style="color: #86efac;">✅ ${msg}</div>`;
+                            } else {
+                                return `<div style="color: #fecaca;">❌ ${msg}</div>`;
+                            }
+                        }).join('') + `<div style="color: white;">Промежуточный счёт: ${state.round_result.scores[0]} : ${state.round_result.scores[1]}</div>`;
                         document.getElementById('modalCorrect').innerHTML = `✅ Правильный ответ: ${state.round_result.correct_text}`;
                         modal.classList.add('visible');
                         setTimeout(() => modal.classList.remove('visible'), 3000);
-                        // Блокируем возможность отвечать на уже завершённый раунд
                         canAnswer = false;
                         if (timerInt) clearInterval(timerInt);
                     }

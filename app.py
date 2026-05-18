@@ -198,7 +198,10 @@ def join():
     session['name'] = name
     games[room]['players'].append(sid)
     games[room]['names'][1] = name
+    print(f"[JOIN] room={room}, name={name}, players={len(games[room]['players'])}")
+    
     if len(games[room]['players']) == 2:
+        print(f"[JOIN] Два игрока в комнате {room}! Запускаем игру через 2 секунды")
         def start():
             time.sleep(2)
             if room in games:

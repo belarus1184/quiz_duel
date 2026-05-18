@@ -86,10 +86,10 @@ def start_round(room):
     game['current_question'] = q
     game['correct'] = q['correct']
     game['round_active'] = True
+    game['round_finished'] = False
     game['answered'] = [False, False]
     game['player_answers'] = [None, None]
     game['round_start_time'] = time.time()
-    game['round_finished'] = False
     save_game(room, game)
     
     def timer():
@@ -108,7 +108,7 @@ def finish_round(room):
     
     correct = game['correct']
     answers = game['player_answers']
-    # Подсчёт очков
+    # Подсчёт очков (последние ответы игроков)
     new_scores = game['scores'][:]
     for i, ans in enumerate(answers):
         if ans == correct:
@@ -295,25 +295,24 @@ def state():
         state['time_left'] = remaining
         state['correct_index'] = game['correct']
         state['player_answers'] = game['player_answers']
-        state['round_finished'] = False
     else:
         state['question'] = None
         state['options'] = []
         state['time_left'] = 0
         # Если раунд не активен и есть результаты, отправляем их для модального окна
-        if not game['round_active'] and not game['game_over'] and game.get('current_question'):
-    state['round_result'] = {
-        'messages': [
-            f"{game['names'][0]} ответил правильно" if game['player_answers'][0] == game['correct'] else
-            f"{game['names'][0]} ответил неправильно" if game['player_answers'][0] is not None else
-            f"{game['names'][0]} не ответил",
-            f"{game['names'][1]} ответил правильно" if game['player_answers'][1] == game['correct'] else
-            f"{game['names'][1]} ответил неправильно" if game['player_answers'][1] is not None else
-            f"{game['names'][1]} не ответил"
-        ],
-        'scores': game['scores'],
-        'correct_text': game['current_question']['options'][game['correct']]
-    }
+        if not game['round_active'] and not game['game_over'] and game.get('current_question') and game.get('player_answers'):
+            state['round_result'] = {
+                'messages': [
+                    f"{game['names'][0]} ответил правильно" if game['player_answers'][0] == game['correct'] else
+                    f"{game['names'][0]} ответил неправильно" if game['player_answers'][0] is not None else
+                    f"{game['names'][0]} не ответил",
+                    f"{game['names'][1]} ответил правильно" if game['player_answers'][1] == game['correct'] else
+                    f"{game['names'][1]} ответил неправильно" if game['player_answers'][1] is not None else
+                    f"{game['names'][1]} не ответил"
+                ],
+                'scores': game['scores'],
+                'correct_text': game['current_question']['options'][game['correct']]
+            }
     
     return jsonify(state)
 
@@ -329,14 +328,10 @@ def answer():
     if not game or not game.get('round_active'):
         return jsonify({'error': 'round not active'}), 400
     player_idx = 0 if game['players'][0] == sid else 1
-    if game['answered'][player_idx]:
-        return jsonify({'error': 'already answered'}), 400
+    # Разрешаем менять ответ в любое время – просто перезаписываем
     game['player_answers'][player_idx] = answer_idx
     game['answered'][player_idx] = True
     save_game(room, game)
-    # Если оба ответили, завершаем раунд
-    if all(game['answered']):
-        finish_round(room)
     return jsonify({'ok': True})
 
 @app.route('/check_players')

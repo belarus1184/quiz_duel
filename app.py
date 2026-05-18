@@ -268,8 +268,12 @@ def answer():
 @app.route('/check_players')
 def check_players():
     room = request.args.get('room')
+    print(f"[CHECK_PLAYERS] room={room}, games keys={list(games.keys())}")  # отладка
     if room in games:
-        return {'players': len(games[room]['players'])}
+        players_count = len(games[room]['players'])
+        print(f"[CHECK_PLAYERS] room exists, players={players_count}")
+        return {'players': players_count}
+    print(f"[CHECK_PLAYERS] room {room} not found")
     return {'players': 0}
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)

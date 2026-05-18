@@ -48,18 +48,6 @@
             to { transform: rotate(360deg); } 
         }
         p { color: #7f8c6d; }
-        .start-btn {
-            background: #2c3e2f;
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 60px;
-            font-size: 1rem;
-            cursor: pointer;
-            margin-top: 20px;
-            display: none;
-        }
-        .start-btn:hover { background: #1e2a21; }
         .error { color: #e74c3c; margin-top: 20px; font-size: 0.8rem; }
     </style>
 </head>
@@ -69,8 +57,7 @@
         <p>Ваш код комнаты:</p>
         <div class="code" id="roomCode">{{ room }}</div>
         <div id="spinner" class="spinner"></div>
-        <p id="waitText">Скажите этот код другу. Когда он подключится, появится кнопка "Начать игру".</p>
-        <button id="startBtn" class="start-btn" onclick="startGame()">🎮 Начать игру</button>
+        <p id="waitText">Скажите этот код другу. Игра начнётся автоматически, когда он подключится.</p>
         <div id="errorMsg" class="error"></div>
     </div>
 
@@ -80,40 +67,28 @@
         
         function checkPlayers() {
             fetch('/check_players?room=' + roomCode)
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Ошибка HTTP: ' + response.status);
-                    }
-                    return response.json();
-                })
+                .then(response => response.json())
                 .then(data => {
-                    console.log('Количество игроков в комнате', roomCode, ':', data.players);
+                    console.log('Игроков в комнате:', data.players);
                     if (data.players === 2) {
-                        console.log('Второй игрок подключился! Показываем кнопку');
-                        const btn = document.getElementById('startBtn');
-                        const spinner = document.getElementById('spinner');
-                        const waitText = document.getElementById('waitText');
-                        
-                        btn.style.display = 'block';
-                        spinner.style.display = 'none';
-                        waitText.innerHTML = '✅ Второй игрок подключился! Нажмите "Начать игру".';
-                        document.getElementById('errorMsg').innerHTML = '';
+                        console.log('Второй игрок подключился! Переходим в игру');
+                        window.location.href = '/game';
                     }
                 })
                 .catch(err => {
                     console.error('Ошибка проверки:', err);
-                    document.getElementById('errorMsg').innerHTML = 'Ошибка соединения. Если игра не начинается, обновите страницу.';
                 });
         }
         
-        // Проверяем каждые 2 секунды
-        const intervalId = setInterval(checkPlayers, 2000);
-        // Первая проверка через 0.5 секунды
+        // Проверяем каждую секунду
+        const intervalId = setInterval(checkPlayers, 1000);
+        // Первая проверка сразу после загрузки
         setTimeout(checkPlayers, 500);
         
-        function startGame() {
-            window.location.href = '/game';
-        }
+        // Если через 30 секунд всё ещё один игрок, показываем ошибку
+        setTimeout(() => {
+            document.getElementById('errorMsg').innerHTML = 'Долгое ожидание. Убедитесь, что друг ввёл правильный код комнаты.';
+        }, 30000);
     </script>
 </body>
 </html>

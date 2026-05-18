@@ -12,6 +12,8 @@
             justify-content: center;
             min-height: 100vh;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
         }
         .wait-card {
             background: white;
@@ -19,15 +21,47 @@
             padding: 48px 32px;
             text-align: center;
             max-width: 400px;
+            width: 100%;
             box-shadow: 0 20px 35px rgba(0,0,0,0.05);
         }
-        h2 { color: #2c3e2f; }
-        .code { font-size: 2rem; font-weight: bold; color: #d4a373; margin: 20px 0; letter-spacing: 2px; }
-        .spinner { width: 40px; height: 40px; margin: 20px auto; border: 4px solid #e2dcd0; border-top-color: #d4a373; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        h2 { color: #2c3e2f; margin-bottom: 16px; }
+        .code { 
+            font-size: 2rem; 
+            font-weight: bold; 
+            color: #d4a373; 
+            margin: 20px 0; 
+            letter-spacing: 2px;
+            background: #fef4e8;
+            padding: 10px;
+            border-radius: 16px;
+        }
+        .spinner { 
+            width: 40px; 
+            height: 40px; 
+            margin: 20px auto; 
+            border: 4px solid #e2dcd0; 
+            border-top-color: #d4a373; 
+            border-radius: 50%; 
+            animation: spin 1s linear infinite; 
+        }
+        @keyframes spin { 
+            to { transform: rotate(360deg); } 
+        }
+        p { color: #7f8c6d; }
+        .start-btn {
+            background: #2c3e2f;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 60px;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-top: 20px;
+            display: none;
+        }
+        .start-btn:hover { background: #1e2a21; }
     </style>
     <script>
-        // Получаем код комнаты из HTML (добавим скрытый элемент)
         const roomCode = document.getElementById('roomCode').innerText;
         
         function checkPlayers() {
@@ -35,13 +69,23 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.players === 2) {
-                        window.location.href = '/game';
+                        // Показываем кнопку "Начать игру"
+                        const btn = document.getElementById('startBtn');
+                        btn.style.display = 'block';
+                        // Скрываем спиннер
+                        document.getElementById('spinner').style.display = 'none';
+                        document.getElementById('waitText').innerHTML = 'Второй игрок подключился! Нажмите "Начать игру".';
                     }
                 })
                 .catch(err => console.log(err));
         }
-        // Проверяем каждую секунду
-        setInterval(checkPlayers, 1000);
+        
+        // Проверяем каждые 2 секунды (достаточно редко, чтобы успеть скопировать код)
+        setInterval(checkPlayers, 2000);
+        
+        function startGame() {
+            window.location.href = '/game';
+        }
     </script>
 </head>
 <body>
@@ -49,8 +93,9 @@
         <h2>⏳ Ожидание соперника</h2>
         <p>Ваш код комнаты:</p>
         <div class="code" id="roomCode">{{ room }}</div>
-        <div class="spinner"></div>
-        <p>Когда второй игрок подключится, игра начнётся автоматически.</p>
+        <div id="spinner" class="spinner"></div>
+        <p id="waitText">Скажите этот код другу. Когда он подключится, появится кнопка "Начать игру".</p>
+        <button id="startBtn" class="start-btn" onclick="startGame()">🎮 Начать игру</button>
     </div>
 </body>
 </html>

@@ -240,128 +240,126 @@
     let timerInt = null;
     let selectedBtn = null;
     let gameActive = true;
-
-    const evtSource = new EventSource(`/stream?sid=${sid}`);
-
-    function setScoreAnimated(s1, s2) {
-        const el1 = document.getElementById('score1');
-        const el2 = document.getElementById('score2');
-        el1.classList.add('animate');
-        el2.classList.add('animate');
-        setTimeout(() => {
-            el1.innerText = s1;
-            el2.innerText = s2;
-            el1.classList.remove('animate');
-            el2.classList.remove('animate');
-        }, 200);
+    let pollInterval = null;
+    
+    // Функция загрузки состояния с сервера
+    function fetchState() {
+        fetch('/state')
+            .then(response => response.json())
+            .then(state => {
+                if (state.error) return;
+                
+                // Обновляем счёт и имена
+                if (state.scores) {
+                    document.getElementById('score1').innerText = state.scores[0];
+                    document.getElementById('score2').innerText = state.scores[1];
+                }
+                if (state.players) {
+                    document.getElementById('label1').innerText = state.players[0] || "Игрок 1";
+                    document.getElementById('label2').innerText = state.players[1] || "Игрок 2";
+                }
+                
+                // Проверка на окончание игры
+                if (state.game_over) {
+                    if (pollInterval) clearInterval(pollInterval);
+                    gameActive = false;
+                    let message = '';
+                    if (state.winner === null) {
+                        message = `🤝 Ничья! Счёт ${state.scores[0]} : ${state.scores[1]}`;
+                    } else if (state.winner === (myIdx === 0 ? state.players[0] : state.players[1])) {
+                        message = `🏆 ПОЗДРАВЛЯЕМ! Вы победили!\nИтог игры: Игрок ${state.winner} победил со счётом ${state.winner_score} : ${state.loser_score}`;
+                    } else {
+                        message = `Итог игры: Игрок ${state.winner} победил со счётом ${state.winner_score} : ${state.loser_score}`;
+                    }
+                    // Построение таблицы истории
+                    let historyHtml = '<div class="final-table">\n<table>\n<thead>\n<tr>\n<th>Вопрос</th>\n<th>' + state.players[0] + '</th>\n<th>' + state.players[1] + '</th>\n</tr>\n</thead>\n<tbody>';
+                    if (state.history_table) {
+                        for (let q of state.history_table) {
+                            let ans1 = q.answer1;
+                            let ans2 = q.answer2;
+                            let correct = q.correct;
+                            let status1 = (ans1 === correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
+                            let status2 = (ans2 === correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
+                            historyHtml += `<tr>\n<td>${q.question.substring(0, 70)}...</td>\n<td>${status1}</td>\n<td>${status2}</td>\n</tr>`;
+                        }
+                    }
+                    historyHtml += '</tbody>\n</table>\n</div>';
+                    document.getElementById('question').innerHTML = message.replace(/\n/g, '<br>') + historyHtml;
+                    document.getElementById('options').innerHTML = '';
+                    document.getElementById('timer').style.display = 'none';
+                    document.getElementById('questionCounter').innerHTML = '';
+                    return;
+                }
+                
+                // Если раунд активен и есть вопрос
+                if (state.round_active && state.question) {
+                    if (currentQ !== state.q_idx) {
+                        // Новый вопрос
+                        currentQ = state.q_idx;
+                        canAnswer = true;
+                        document.getElementById('questionCounter').innerHTML = `Вопрос ${currentQ+1} из ${state.total_questions}`;
+                        document.getElementById('question').innerText = state.question;
+                        const optsDiv = document.getElementById('options');
+                        optsDiv.innerHTML = '';
+                        state.options.forEach((opt, i) => {
+                            const btn = document.createElement('button');
+                            btn.innerText = opt;
+                            btn.classList.add('option-btn');
+                            btn.onclick = () => {
+                                if (!canAnswer || !gameActive) return;
+                                // Отправляем ответ
+                                fetch('/answer', {
+                                    method: 'POST',
+                                    headers: {'Content-Type': 'application/json'},
+                                    body: JSON.stringify({sid: sid, answer: i})
+                                });
+                                // Блокируем повторные ответы и подсвечиваем выбранный вариант
+                                canAnswer = false;
+                                if (selectedBtn) selectedBtn.classList.remove('selected');
+                                btn.classList.add('selected');
+                                selectedBtn = btn;
+                            };
+                            optsDiv.appendChild(btn);
+                        });
+                        if (timerInt) clearInterval(timerInt);
+                    }
+                    // Обновляем таймер
+                    const timeLeft = state.time_left;
+                    document.getElementById('timer').innerText = `⏱️ ${timeLeft}`;
+                    if (timeLeft <= 0) {
+                        document.getElementById('timer').innerText = '⏰ 0';
+                        canAnswer = false;
+                    }
+                } else if (!state.round_active && !state.game_over && currentQ !== -1) {
+                    // Раунд завершён – показываем модальное окно с результатами
+                    if (state.player_answers && state.correct_index !== undefined) {
+                        const correctText = state.options ? state.options[state.correct_index] : "";
+                        const messages = [];
+                        for (let i = 0; i < 2; i++) {
+                            let ans = state.player_answers[i];
+                            if (ans === state.correct_index) messages.push(`${state.players[i]} ответил правильно`);
+                            else if (ans !== undefined && ans !== null && ans !== -1) messages.push(`${state.players[i]} ответил неправильно`);
+                            else messages.push(`${state.players[i]} не ответил`);
+                        }
+                        const modal = document.getElementById('resultModal');
+                        document.getElementById('modalResults').innerHTML = messages.map(msg => {
+                            if (msg.includes('правильно')) return `<div>✅ ${msg}</div>`;
+                            else return `<div>❌ ${msg}</div>`;
+                        }).join('') + `<div>Промежуточный счёт: ${state.scores[0]} : ${state.scores[1]}</div>`;
+                        document.getElementById('modalCorrect').innerHTML = `✅ Правильный ответ: ${correctText}`;
+                        modal.classList.add('visible');
+                        setTimeout(() => modal.classList.remove('visible'), 4000);
+                    }
+                    // Сбрасываем флаг, чтобы не показывать модалку повторно
+                    currentQ = -1;
+                }
+            })
+            .catch(err => console.log('Ошибка запроса состояния:', err));
     }
-
-    function showQuestion(data) {
-        if (timerInt) clearInterval(timerInt);
-        currentQ = data.index;
-        canAnswer = true;
-        document.getElementById('questionCounter').innerHTML = `Вопрос ${currentQ+1} из ${data.total}`;
-        document.getElementById('question').innerText = data.text;
-        const optsDiv = document.getElementById('options');
-        optsDiv.innerHTML = '';
-        data.options.forEach((opt, i) => {
-            const btn = document.createElement('button');
-            btn.innerText = opt;
-            btn.classList.add('option-btn');
-            btn.onclick = () => {
-                if (!canAnswer || !gameActive) return;
-                if (selectedBtn) selectedBtn.classList.remove('selected');
-                btn.classList.add('selected');
-                selectedBtn = btn;
-                fetch('/answer', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({sid: sid, answer: i})
-                });
-            };
-            optsDiv.appendChild(btn);
-        });
-        let timeLeft = data.time;
-        const timerElem = document.getElementById('timer');
-        timerElem.innerText = `⏱️ ${timeLeft}`;
-        timerInt = setInterval(() => {
-            timeLeft--;
-            timerElem.innerText = `⏱️ ${timeLeft}`;
-            if (timeLeft <= 0) {
-                clearInterval(timerInt);
-                timerElem.innerText = '⏰ 0';
-                canAnswer = false;
-            }
-        }, 1000);
-    }
-
-    evtSource.addEventListener('new_question', (e) => {
-        const data = JSON.parse(e.data);
-        showQuestion(data);
-    });
-
-    evtSource.addEventListener('round_result', (e) => {
-        const data = JSON.parse(e.data);
-        // Обновляем имена (на случай, если они изменились)
-        document.getElementById('label1').innerText = data.names[0];
-        document.getElementById('label2').innerText = data.names[1];
-        // Подсветка правильного/неправильного ответов
-        const btns = document.querySelectorAll('.option-btn');
-        btns.forEach((btn, idx) => {
-            btn.classList.remove('correct-highlight', 'wrong-highlight');
-            if (idx === data.correct_index) {
-                btn.classList.add('correct-highlight');
-            } else if (data.player_answers && data.player_answers[myIdx] === idx && idx !== data.correct_index) {
-                btn.classList.add('wrong-highlight');
-            }
-            btn.disabled = true;
-        });
-        // Формируем сообщения: все белым цветом, но с разными иконками
-        const messagesHtml = data.messages.map(msg => {
-            if (msg.includes('правильно')) {
-                return `<div>✅ ${msg}</div>`;
-            } else {
-                return `<div>❌ ${msg}</div>`;
-            }
-        }).join('');
-        const scoreHtml = `<div>Промежуточный счёт: ${data.scores[0]} : ${data.scores[1]}</div>`;
-        const modal = document.getElementById('resultModal');
-        document.getElementById('modalResults').innerHTML = messagesHtml + scoreHtml;
-        document.getElementById('modalCorrect').innerHTML = `✅ Правильный ответ: ${data.correct_text}`;
-        modal.classList.add('visible');
-        setScoreAnimated(data.scores[0], data.scores[1]);
-        setTimeout(() => modal.classList.remove('visible'), 4000);
-    });
-
-    evtSource.addEventListener('game_over', (e) => {
-        const data = JSON.parse(e.data);
-        gameActive = false;
-        if (timerInt) clearInterval(timerInt);
-        evtSource.close();
-        let message = '';
-        if (data.winner === null) {
-            message = `🤝 Ничья! Счёт ${data.scores[0]} : ${data.scores[1]}`;
-        } else if (data.winner === (myIdx === 0 ? data.names[0] : data.names[1])) {
-            message = `🏆 ПОЗДРАВЛЯЕМ! Вы победили!\nИтог игры: Игрок ${data.winner} победил со счётом ${data.winner_score} : ${data.loser_score}`;
-        } else {
-            message = `Итог игры: Игрок ${data.winner} победил со счётом ${data.winner_score} : ${data.loser_score}`;
-        }
-        // Построение таблицы истории
-        let historyHtml = '<div class="final-table"><table><thead><tr><th>Вопрос</th><th>' + data.names[0] + '</th><th>' + data.names[1] + '</th></tr></thead><tbody>';
-        for (let q of data.history) {
-            let ans1 = q.answer1;
-            let ans2 = q.answer2;
-            let correct = q.correct;
-            let status1 = (ans1 === correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
-            let status2 = (ans2 === correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
-            historyHtml += `<tr><td>${q.question.substring(0, 70)}...</td><td>${status1}</td><td>${status2}</td></tr>`;
-        }
-        historyHtml += '</tbody></table></div>';
-        document.getElementById('question').innerHTML = message.replace(/\n/g, '<br>') + historyHtml;
-        document.getElementById('options').innerHTML = '';
-        document.getElementById('timer').style.display = 'none';
-        document.getElementById('questionCounter').innerHTML = '';
-    });
+    
+    // Запускаем опрос состояния каждые 1.5 секунды
+    pollInterval = setInterval(fetchState, 1500);
+    fetchState();
 </script>
 </body>
 </html>

@@ -271,12 +271,11 @@ def answer():
 @app.route('/check_players')
 def check_players():
     room = request.args.get('room')
-    print(f"[CHECK_PLAYERS] room={room}, games keys={list(games.keys())}")  # отладка
+    print(f"Check players: room={room}, games={list(games.keys())}")
     if room in games:
         players_count = len(games[room]['players'])
-        print(f"[CHECK_PLAYERS] room exists, players={players_count}")
+        print(f"Игроков в комнате {room}: {players_count}")
         return {'players': players_count}
-    print(f"[CHECK_PLAYERS] room {room} not found")
     return {'players': 0}
 if __name__ == '__main__':
     import os

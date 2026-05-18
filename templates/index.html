@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>Викторина-Дуэль</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #faf7f2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 48px;
+            padding: 48px 32px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.05);
+            text-align: center;
+        }
+        h1 { font-size: 2.2rem; color: #2c3e2f; margin-bottom: 12px; }
+        .sub { color: #7f8c6d; margin-bottom: 40px; }
+        .card { background: #fefcf8; border-radius: 32px; padding: 32px 24px; }
+        .input-group { margin-bottom: 20px; }
+        .input-group input {
+            width: 100%;
+            padding: 16px 20px;
+            font-size: 1rem;
+            border: 1px solid #e2dcd0;
+            border-radius: 60px;
+            background: white;
+            outline: none;
+        }
+        .create-btn {
+            width: 100%;
+            background: #2c3e2f;
+            border: none;
+            padding: 16px;
+            border-radius: 60px;
+            font-size: 1.2rem;
+            color: white;
+            cursor: pointer;
+            margin-bottom: 28px;
+        }
+        .create-btn:hover { background: #1e2a21; }
+        .or { margin: 20px 0; color: #b0aa9a; }
+        .join-form { display: flex; flex-direction: column; gap: 12px; }
+        .join-btn {
+            background: #f4f1e8;
+            border: 1px solid #e2dcd0;
+            border-radius: 60px;
+            padding: 16px;
+            font-size: 1rem;
+            color: #2c3e2f;
+            cursor: pointer;
+        }
+        .join-btn:hover { background: #e8e2d6; }
+        .info { margin-top: 32px; font-size: 0.85rem; color: #a2a08b; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>📚 Викторина-Дуэль</h1>
+    <div class="sub">Вызови друга на интеллектуальный поединок</div>
+    <div class="card">
+        <form action="/create" method="post">
+            <div class="input-group">
+                <input type="text" name="name" placeholder="Ваше имя" required autocomplete="off">
+            </div>
+            <button type="submit" class="create-btn">✨ Создать игру</button>
+        </form>
+        <div class="or">–––––––– или подключиться по коду ––––––––</div>
+        <form action="/join" method="post" class="join-form">
+            <div class="input-group">
+                <input type="text" name="name" placeholder="Ваше имя" required autocomplete="off">
+            </div>
+            <div class="input-group">
+                <input type="text" name="room" placeholder="Код комнаты" required autocomplete="off">
+            </div>
+            <button type="submit" class="join-btn">🔗 Подключиться</button>
+        </form>
+    </div>
+    <div class="info">⚡ 25 секунд на ответ · Результаты после раунда</div>
+</div>
+</body>
+</html>

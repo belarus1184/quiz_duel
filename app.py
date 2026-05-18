@@ -265,6 +265,11 @@ def answer():
     game['player_answers'][player_idx] = answer_idx
     game['answered'][player_idx] = True
     return jsonify({'ok': True})
-
+@app.route('/check_players')
+def check_players():
+    room = request.args.get('room')
+    if room in games:
+        return {'players': len(games[room]['players'])}
+    return {'players': 0}
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)

@@ -27,9 +27,11 @@
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
     <script>
-        // Функция проверки, подключился ли второй игрок
+        // Получаем код комнаты из HTML (добавим скрытый элемент)
+        const roomCode = document.getElementById('roomCode').innerText;
+        
         function checkPlayers() {
-            fetch('/check_players?room=' + '{{ room }}')
+            fetch('/check_players?room=' + roomCode)
                 .then(response => response.json())
                 .then(data => {
                     if (data.players === 2) {
@@ -46,7 +48,7 @@
     <div class="wait-card">
         <h2>⏳ Ожидание соперника</h2>
         <p>Ваш код комнаты:</p>
-        <div class="code">{{ room }}</div>
+        <div class="code" id="roomCode">{{ room }}</div>
         <div class="spinner"></div>
         <p>Когда второй игрок подключится, игра начнётся автоматически.</p>
     </div>

@@ -301,19 +301,19 @@ def state():
         state['options'] = []
         state['time_left'] = 0
         # Если раунд не активен и есть результаты, отправляем их для модального окна
-        if not game['round_active'] and not game['game_over'] and game.get('current_question') and game.get('player_answers'):
-            state['round_result'] = {
-                'messages': [
-                    f"{game['names'][0]} ответил правильно" if game['player_answers'][0] == game['correct'] else
-                    f"{game['names'][0]} ответил неправильно" if game['player_answers'][0] is not None else
-                    f"{game['names'][0]} не ответил",
-                    f"{game['names'][1]} ответил правильно" if game['player_answers'][1] == game['correct'] else
-                    f"{game['names'][1]} ответил неправильно" if game['player_answers'][1] is not None else
-                    f"{game['names'][1]} не ответил"
-                ],
-                'scores': game['scores'],
-                'correct_text': game['current_question']['options'][game['correct']]
-            }
+        if not game['round_active'] and not game['game_over'] and game.get('current_question'):
+    state['round_result'] = {
+        'messages': [
+            f"{game['names'][0]} ответил правильно" if game['player_answers'][0] == game['correct'] else
+            f"{game['names'][0]} ответил неправильно" if game['player_answers'][0] is not None else
+            f"{game['names'][0]} не ответил",
+            f"{game['names'][1]} ответил правильно" if game['player_answers'][1] == game['correct'] else
+            f"{game['names'][1]} ответил неправильно" if game['player_answers'][1] is not None else
+            f"{game['names'][1]} не ответил"
+        ],
+        'scores': game['scores'],
+        'correct_text': game['current_question']['options'][game['correct']]
+    }
     
     return jsonify(state)
 

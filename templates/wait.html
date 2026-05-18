@@ -60,33 +60,8 @@
             display: none;
         }
         .start-btn:hover { background: #1e2a21; }
+        .error { color: #e74c3c; margin-top: 20px; font-size: 0.8rem; }
     </style>
-    <script>
-        const roomCode = document.getElementById('roomCode').innerText;
-        
-        function checkPlayers() {
-            fetch('/check_players?room=' + roomCode)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.players === 2) {
-                        // Показываем кнопку "Начать игру"
-                        const btn = document.getElementById('startBtn');
-                        btn.style.display = 'block';
-                        // Скрываем спиннер
-                        document.getElementById('spinner').style.display = 'none';
-                        document.getElementById('waitText').innerHTML = 'Второй игрок подключился! Нажмите "Начать игру".';
-                    }
-                })
-                .catch(err => console.log(err));
-        }
-        
-        // Проверяем каждые 2 секунды (достаточно редко, чтобы успеть скопировать код)
-        setInterval(checkPlayers, 2000);
-        
-        function startGame() {
-            window.location.href = '/game';
-        }
-    </script>
 </head>
 <body>
     <div class="wait-card">
@@ -96,6 +71,49 @@
         <div id="spinner" class="spinner"></div>
         <p id="waitText">Скажите этот код другу. Когда он подключится, появится кнопка "Начать игру".</p>
         <button id="startBtn" class="start-btn" onclick="startGame()">🎮 Начать игру</button>
+        <div id="errorMsg" class="error"></div>
     </div>
+
+    <script>
+        const roomCode = document.getElementById('roomCode').innerText;
+        console.log('Страница ожидания для комнаты:', roomCode);
+        
+        function checkPlayers() {
+            fetch('/check_players?room=' + roomCode)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Ошибка HTTP: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Количество игроков в комнате', roomCode, ':', data.players);
+                    if (data.players === 2) {
+                        console.log('Второй игрок подключился! Показываем кнопку');
+                        const btn = document.getElementById('startBtn');
+                        const spinner = document.getElementById('spinner');
+                        const waitText = document.getElementById('waitText');
+                        
+                        btn.style.display = 'block';
+                        spinner.style.display = 'none';
+                        waitText.innerHTML = '✅ Второй игрок подключился! Нажмите "Начать игру".';
+                        document.getElementById('errorMsg').innerHTML = '';
+                    }
+                })
+                .catch(err => {
+                    console.error('Ошибка проверки:', err);
+                    document.getElementById('errorMsg').innerHTML = 'Ошибка соединения. Если игра не начинается, обновите страницу.';
+                });
+        }
+        
+        // Проверяем каждые 2 секунды
+        const intervalId = setInterval(checkPlayers, 2000);
+        // Первая проверка через 0.5 секунды
+        setTimeout(checkPlayers, 500);
+        
+        function startGame() {
+            window.location.href = '/game';
+        }
+    </script>
 </body>
 </html>

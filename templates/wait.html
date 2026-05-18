@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>Ожидание соперника</title>
+    <meta http-equiv="refresh" content="3">
+    <style>
+        body {
+            background: #faf7f2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .wait-card {
+            background: white;
+            border-radius: 48px;
+            padding: 48px 32px;
+            text-align: center;
+            max-width: 400px;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.05);
+        }
+        h2 { color: #2c3e2f; }
+        .code { font-size: 2rem; font-weight: bold; color: #d4a373; margin: 20px 0; letter-spacing: 2px; }
+        .spinner { width: 40px; height: 40px; margin: 20px auto; border: 4px solid #e2dcd0; border-top-color: #d4a373; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="wait-card">
+        <h2>⏳ Ожидание соперника</h2>
+        <p>Ваш код комнаты:</p>
+        <div class="code">{{ room }}</div>
+        <div class="spinner"></div>
+        <p>Когда второй игрок подключится, игра начнётся автоматически.</p>
+    </div>
+</body>
+</html>

@@ -59,7 +59,7 @@ def load_questions():
         try:
             with open('questions.json', 'r', encoding=encoding) as f:
                 qlist = json.load(f)
-                random.shuffle(qlist)
+                #random.shuffle(qlist)
                 print(f"Вопросы загружены (кодировка {encoding})")
                 return qlist
         except (UnicodeDecodeError, json.JSONDecodeError):

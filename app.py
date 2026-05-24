@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, session, redirect, url_for, Response, jsonify
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 import uuid
 import time
 import threading
@@ -14,8 +14,10 @@ event_streams = {}
 
 def load_questions():
     if not os.path.exists('questions.json'):
-        # резервный список
-        return [{"question": "Столица Франции?", "options": ["Лондон","Берлин","Париж","Мадрид"], "correct": 2}]
+        return [
+            {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
+            {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
+        ]
     for encoding in ['utf-8', 'cp1251', 'latin-1']:
         try:
             with open('questions.json', 'r', encoding=encoding) as f:
@@ -25,7 +27,11 @@ def load_questions():
                 return qlist
         except (UnicodeDecodeError, json.JSONDecodeError):
             continue
-    return [{"question": "Столица Франции?", "options": ["Лондон","Берлин","Париж","Мадрид"], "correct": 2}]
+    print("Не удалось загрузить questions.json, использую резервный список")
+    return [
+        {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
+        {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
+    ]
 
 QUESTIONS = load_questions()
 ROUND_TIME = 25
@@ -207,10 +213,7 @@ def wait():
         return redirect(url_for('index'))
     if len(games[room]['players']) == 2:
         return redirect(url_for('game'))
-    # Генерация пригласительной ссылки
-    base_url = request.url_root.rstrip('/')
-    invite_link = f"{base_url}/?room={room}"
-    return render_template('wait.html', room=room, name=session.get('name', ''), invite_link=invite_link)
+    return render_template('wait.html', room=room, name=session.get('name', ''))
 
 @app.route('/check_players')
 def check_players():
@@ -235,18 +238,36 @@ def game():
     name2 = names[1] if names[1] else "Игрок 2"
     return render_template('game.html', sid=sid, name=name, player_idx=player_idx, total_questions=len(QUESTIONS), name1=name1, name2=name2)
 
-@app.route('/stream')
-def stream():
-    sid = request.args.get('sid')
-    if not sid:
-        return "no sid", 400
-    def generate():
-        while True:
-            time.sleep(0.1)
-            if sid in event_streams and event_streams[sid]:
-                event, data = event_streams[sid].pop(0)
-                yield f"event: {event}\ndata: {json.dumps(data)}\n\n"
-    return Response(generate(), mimetype="text/event-stream")
+@app.route('/state')
+def state():
+    room = session.get('room')
+    if not room or room not in games:
+        return jsonify({'error': 'no game'})
+    game = games[room]
+    state = {
+        'players': game['names'],
+        'scores': game['scores'],
+        'round_active': game['round_active'],
+        'q_idx': game['q_idx'],
+        'total_questions': len(QUESTIONS),
+        'game_over': game.get('game_over', False),
+        'winner': game.get('winner'),
+        'winner_score': game.get('winner_score'),
+        'loser_score': game.get('loser_score')
+    }
+    if game['round_active'] and game['current_question']:
+        elapsed = time.time() - game['round_start_time']
+        remaining = max(0, ROUND_TIME - int(elapsed))
+        state['question'] = game['current_question']['question']
+        state['options'] = game['current_question']['options']
+        state['time_left'] = remaining
+        state['correct_index'] = game['correct']
+        state['player_answers'] = game['player_answers']
+    else:
+        state['question'] = None
+        state['options'] = []
+        state['time_left'] = 0
+    return jsonify(state)
 
 @app.route('/answer', methods=['POST'])
 def answer():
@@ -260,8 +281,12 @@ def answer():
     if not game.get('round_active'):
         return jsonify({'error': 'round not active'}), 400
     player_idx = 0 if game['players'][0] == sid else 1
+    if game['answered'][player_idx]:
+        return jsonify({'error': 'already answered'}), 400
     game['player_answers'][player_idx] = answer_idx
     game['answered'][player_idx] = True
+    if all(game['answered']):
+        finish_round(room)
     return jsonify({'ok': True})
 
 if __name__ == '__main__':

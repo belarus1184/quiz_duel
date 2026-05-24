@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <title>Ожидание соперника</title>
-    <meta http-equiv="refresh" content="3">
     <style>
         body {
             background: #faf7f2;
@@ -43,6 +42,20 @@
         }
         p { color: #7f8c6d; }
     </style>
+    <script>
+        // Автоматическая проверка подключения второго игрока
+        const roomCode = "{{ room }}";
+        setInterval(function() {
+            fetch('/check_players?room=' + roomCode)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.players === 2) {
+                        window.location.href = '/game';
+                    }
+                })
+                .catch(err => console.log(err));
+        }, 2000);
+    </script>
 </head>
 <body>
     <div class="wait-card">

@@ -49,6 +49,8 @@ def start_round(room):
     game['answered'] = [False, False]
     game['player_answers'] = [None, None]
     game['round_start_time'] = time.time()
+    game['round_finished'] = False
+    # Таймер на ROUND_TIME секунд
     def timer():
         time.sleep(ROUND_TIME)
         if room in games and games[room].get('round_active'):
@@ -60,6 +62,7 @@ def finish_round(room):
     if not game.get('round_active'):
         return
     game['round_active'] = False
+    game['round_finished'] = True
     correct = game['correct']
     answers = game['player_answers']
     new_scores = game['scores'][:]
@@ -67,6 +70,7 @@ def finish_round(room):
         if ans == correct:
             new_scores[i] += 1
     game['scores'] = new_scores
+    # Сохраняем историю
     if 'history' not in game:
         game['history'] = []
     game['history'].append({
@@ -74,11 +78,29 @@ def finish_round(room):
         'answers': answers.copy(),
         'correct': correct
     })
+    # Формируем сообщения для модального окна
+    names = game['names']
+    messages = []
+    for i, ans in enumerate(answers):
+        if ans == correct:
+            messages.append(f"{names[i]} ответил правильно")
+        elif ans is not None and ans != -1:
+            messages.append(f"{names[i]} ответил неправильно")
+        else:
+            messages.append(f"{names[i]} не ответил")
+    game['round_results'] = {
+        'messages': messages,
+        'correct_text': game['current_question']['options'][correct],
+        'scores': new_scores
+    }
+    # Запускаем переход к следующему раунду через PAUSE_TIME
     def next_round():
         time.sleep(PAUSE_TIME)
         if room in games:
             game = games[room]
             game['q_idx'] += 1
+            game['round_finished'] = False
+            game['round_results'] = None
             start_round(room)
     threading.Thread(target=next_round, daemon=True).start()
 
@@ -111,6 +133,7 @@ def end_game(room):
     game['winner_score'] = winner_score
     game['loser_score'] = loser_score
     game['history_table'] = history_table
+    # Удалим комнату через 10 секунд
     def clean():
         time.sleep(10)
         if room in games:
@@ -137,6 +160,8 @@ def create():
         'scores': [0, 0],
         'q_idx': 0,
         'round_active': False,
+        'round_finished': False,
+        'round_results': None,
         'current_question': None,
         'correct': None,
         'answered': [False, False],
@@ -212,6 +237,7 @@ def state():
         'players': game['names'],
         'scores': game['scores'],
         'round_active': game['round_active'],
+        'round_finished': game.get('round_finished', False),
         'q_idx': game['q_idx'],
         'total_questions': len(QUESTIONS),
         'game_over': game.get('game_over', False),
@@ -220,7 +246,7 @@ def state():
         'loser_score': game.get('loser_score'),
         'history': game.get('history_table', [])
     }
-    if game['round_active'] and game['current_question']:
+    if game['round_active']:
         elapsed = time.time() - game['round_start_time']
         remaining = max(0, ROUND_TIME - int(elapsed))
         state['question'] = game['current_question']['question']
@@ -232,6 +258,12 @@ def state():
         state['question'] = None
         state['options'] = []
         state['time_left'] = 0
+        state['player_answers'] = [None, None]
+    # Если раунд только что завершён, добавим результаты
+    if game.get('round_results') and not game['round_active']:
+        state['round_results'] = game['round_results']
+    else:
+        state['round_results'] = None
     return jsonify(state)
 
 @app.route('/answer', methods=['POST'])
@@ -250,8 +282,7 @@ def answer():
         return jsonify({'error': 'already answered'}), 400
     game['player_answers'][player_idx] = answer_idx
     game['answered'][player_idx] = True
-    if all(game['answered']):
-        finish_round(room)
+    # Не завершаем раунд досрочно, даже если оба ответили
     return jsonify({'ok': True})
 
 if __name__ == '__main__':

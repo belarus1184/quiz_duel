@@ -21,6 +21,20 @@
         <p>Ваш код комнаты:</p>
         <div class="code" id="roomCode">{{ room }}</div>
         <div class="spinner"></div>
+        <div class="wait-card">
+    <h2>⏳ Ожидание соперника</h2>
+    <p>Ваш код комнаты:</p>
+    <div class="code">{{ room }}</div>
+    
+    <!-- НОВОЕ: показываем ссылку для друга -->
+    <p style="margin-top: 20px;">Пригласительная ссылка для друга:</p>
+    <input type="text" value="{{ invite_link }}" readonly 
+           style="width:100%; padding:8px; margin:10px 0; border-radius:30px; border:1px solid #ccc; text-align:center; background:#f9f9f9;">
+    <p style="font-size: 0.85rem; color: #555;">(Отправьте эту ссылку другу, он введёт имя и подключится)</p>
+    
+    <div class="spinner"></div>
+    <p>Когда второй игрок подключится, игра начнётся автоматически.</p>
+</div>
         <p id="waitText">Скажите этот код другу. Игра начнётся автоматически, когда он подключится.</p>
         <div id="errorMsg" class="error"></div>
     </div>

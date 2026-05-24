@@ -42,6 +42,19 @@
         }
         p { color: #7f8c6d; }
     </style>
+    <script>
+        const roomCode = "{{ room }}";
+        setInterval(function() {
+            fetch('/check_players?room=' + roomCode)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.players === 2) {
+                        window.location.href = '/game';
+                    }
+                })
+                .catch(err => console.log(err));
+        }, 2000);
+    </script>
 </head>
 <body>
     <div class="wait-card">
@@ -58,21 +71,5 @@
         <div class="spinner"></div>
         <p>Когда второй игрок подключится, игра начнётся автоматически.</p>
     </div>
-
-    <script>
-        const roomCode = "{{ room }}";
-        console.log("Waiting for player, room:", roomCode);
-        setInterval(function() {
-            fetch('/check_players?room=' + roomCode)
-                .then(response => response.json())
-                .then(data => {
-                    console.log("Check players:", data);
-                    if (data.players === 2) {
-                        window.location.href = '/game';
-                    }
-                })
-                .catch(err => console.error(err));
-        }, 2000);
-    </script>
 </body>
 </html>

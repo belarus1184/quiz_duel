@@ -69,14 +69,14 @@
     <h1>📚 Викторина-Дуэль</h1>
     <div class="sub" id="subHeader">Вызови друга на интеллектуальный поединок</div>
     <div class="card">
-        <!-- Форма создания игры (видна, если нет параметра room) -->
+        <!-- Форма создания игры (видна по умолчанию) -->
         <form action="/create" method="post" id="createForm">
             <div class="input-group">
                 <input type="text" name="name" placeholder="Ваше имя" required autocomplete="off">
             </div>
             <button type="submit" class="create-btn">✨ Создать игру</button>
         </form>
-        <div id="orDiv" class="or">–––––––– или подключиться по коду ––––––––</div>
+        <div id="orDiv" class="or">–––––––– или подключиться по ссылке ––––––––</div>
         <!-- Форма присоединения -->
         <form action="/join" method="post" class="join-form" id="joinForm">
             <div class="input-group">

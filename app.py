@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, session, redirect, url_for, jsonify, Response
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 import uuid
 import time
 import threading
@@ -10,7 +10,6 @@ app = Flask(__name__)
 app.secret_key = 'sse_secret'
 
 games = {}
-event_streams = {}
 
 def load_questions():
     if not os.path.exists('questions.json'):
@@ -37,17 +36,6 @@ QUESTIONS = load_questions()
 ROUND_TIME = 25
 PAUSE_TIME = 5
 
-def send_event(sid, event, data):
-    if sid not in event_streams:
-        event_streams[sid] = []
-    event_streams[sid].append((event, data))
-
-def broadcast(room, event, data):
-    if room not in games:
-        return
-    for sid in games[room]['players']:
-        send_event(sid, event, data)
-
 def start_round(room):
     game = games[room]
     q_idx = game['q_idx']
@@ -61,13 +49,6 @@ def start_round(room):
     game['answered'] = [False, False]
     game['player_answers'] = [None, None]
     game['round_start_time'] = time.time()
-    broadcast(room, 'new_question', {
-        'index': q_idx,
-        'text': q['question'],
-        'options': q['options'],
-        'time': ROUND_TIME,
-        'total': len(QUESTIONS)
-    })
     def timer():
         time.sleep(ROUND_TIME)
         if room in games and games[room].get('round_active'):
@@ -92,22 +73,6 @@ def finish_round(room):
         'question': game['current_question']['question'],
         'answers': answers.copy(),
         'correct': correct
-    })
-    names = game['names']
-    messages = []
-    for i, ans in enumerate(answers):
-        if ans == correct:
-            messages.append(f"{names[i]} ответил правильно")
-        elif ans is not None and ans != -1:
-            messages.append(f"{names[i]} ответил неправильно")
-        else:
-            messages.append(f"{names[i]} не ответил")
-    broadcast(room, 'round_result', {
-        'messages': messages,
-        'scores': new_scores,
-        'names': names,
-        'correct_index': correct,
-        'correct_text': game['current_question']['options'][correct]
     })
     def next_round():
         time.sleep(PAUSE_TIME)
@@ -141,14 +106,11 @@ def end_game(room):
             'answer2': h['answers'][1],
             'correct': h['correct']
         })
-    broadcast(room, 'game_over', {
-        'winner': winner,
-        'winner_score': winner_score,
-        'loser_score': loser_score,
-        'scores': scores,
-        'names': names,
-        'history': history_table
-    })
+    game['game_over'] = True
+    game['winner'] = winner
+    game['winner_score'] = winner_score
+    game['loser_score'] = loser_score
+    game['history_table'] = history_table
     def clean():
         time.sleep(10)
         if room in games:
@@ -180,7 +142,8 @@ def create():
         'answered': [False, False],
         'player_answers': [None, None],
         'round_start_time': 0,
-        'history': []
+        'history': [],
+        'game_over': False
     }
     return redirect(url_for('wait'))
 
@@ -254,7 +217,8 @@ def state():
         'game_over': game.get('game_over', False),
         'winner': game.get('winner'),
         'winner_score': game.get('winner_score'),
-        'loser_score': game.get('loser_score')
+        'loser_score': game.get('loser_score'),
+        'history': game.get('history_table', [])
     }
     if game['round_active'] and game['current_question']:
         elapsed = time.time() - game['round_start_time']
@@ -289,19 +253,6 @@ def answer():
     if all(game['answered']):
         finish_round(room)
     return jsonify({'ok': True})
-
-@app.route('/stream')
-def stream():
-    sid = request.args.get('sid')
-    if not sid:
-        return "no sid", 400
-    def generate():
-        while True:
-            time.sleep(0.1)
-            if sid in event_streams and event_streams[sid]:
-                event, data = event_streams[sid].pop(0)
-                yield f"event: {event}\ndata: {json.dumps(data)}\n\n"
-    return Response(generate(), mimetype="text/event-stream")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)

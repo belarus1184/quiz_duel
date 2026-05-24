@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, session, redirect, url_for, jsonify
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify, Response
 import uuid
 import time
 import threading
@@ -213,10 +213,8 @@ def wait():
         return redirect(url_for('index'))
     if len(games[room]['players']) == 2:
         return redirect(url_for('game'))
-    
-    # Генерируем абсолютную ссылку на главную страницу с параметром room
+    # Генерируем пригласительную ссылку
     invite_link = url_for('index', _external=True) + '?room=' + room
-    
     return render_template('wait.html', 
                            room=room, 
                            name=session.get('name', ''), 

@@ -88,5 +88,15 @@
     </div>
     <div class="info">⚡ 25 секунд на ответ · Результаты после раунда</div>
 </div>
+<script>
+    // Берём параметр room из адресной строки
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomFromUrl = urlParams.get('room');
+    if (roomFromUrl) {
+        // Находим поле ввода для кода комнаты и заполняем его
+        const roomInput = document.querySelector('input[name="room"]');
+        if (roomInput) roomInput.value = roomFromUrl;
+    }
+</script>
 </body>
 </html>

@@ -74,13 +74,11 @@
     const sid = "{{ sid }}";
     const myIdx = {{ player_idx }};
     const totalQ = {{ total_questions }};
-    let currentQ = -1;
-    let canAnswer = true;
-    let timerInterval = null;
-    let selectedBtn = null;
+    let currentQuestion = null;
+    let roundActive = false;
     let gameActive = true;
-    let currentRoundStartTime = null; // timestamp с сервера
-    let roundDuration = 25;            // ROUND_TIME
+    let pollInterval = null;
+    let selectedBtn = null;
 
     async function fetchState() {
         try {
@@ -98,11 +96,11 @@
                 document.getElementById('label2').innerText = state.players[1] || "Игрок 2";
             }
 
-            // Обработка завершения игры
+            // Конец игры
             if (state.game_over) {
                 if (gameActive) {
                     gameActive = false;
-                    if (timerInterval) clearInterval(timerInterval);
+                    clearInterval(pollInterval);
                     let msg = '';
                     if (state.winner === null) {
                         msg = `🤝 Ничья! Счёт ${state.scores[0]} : ${state.scores[1]}`;
@@ -113,27 +111,28 @@
                     }
                     let historyHtml = '<div class="final-table"><table><thead><tr><th>Вопрос</th><th>' + state.players[0] + '</th><th>' + state.players[1] + '</th></tr></thead><tbody>';
                     for (let q of state.history) {
-                        let status1 = (q.answer1 === q.correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
-                        let status2 = (q.answer2 === q.correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
+                        let ans1 = q.answer1;
+                        let ans2 = q.answer2;
+                        let correct = q.correct;
+                        let status1 = (ans1 === correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
+                        let status2 = (ans2 === correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
                         historyHtml += `<tr><td>${q.question.substring(0, 70)}...</td><td>${status1}</td><td>${status2}</td></tr>`;
                     }
                     historyHtml += '</tbody></table></div>';
                     document.getElementById('question').innerHTML = msg.replace(/\n/g, '<br>') + historyHtml;
                     document.getElementById('options').innerHTML = '';
                     document.getElementById('timer').style.display = 'none';
-                    document.getElementById('questionCounter').innerHTML = '';
                 }
                 return;
             }
 
-            // Если раунд активен и есть вопрос
+            // Активный раунд
             if (state.round_active && state.question) {
-                if (currentQ !== state.q_idx) {
+                if (currentQuestion !== state.question) {
                     // Новый вопрос
-                    currentQ = state.q_idx;
-                    canAnswer = true;
-                    selectedBtn = null;
-                    document.getElementById('questionCounter').innerHTML = `Вопрос ${currentQ+1} из ${state.total_questions}`;
+                    currentQuestion = state.question;
+                    roundActive = true;
+                    document.getElementById('questionCounter').innerHTML = `Вопрос ${state.q_idx+1} из ${state.total_questions}`;
                     document.getElementById('question').innerText = state.question;
                     const optsDiv = document.getElementById('options');
                     optsDiv.innerHTML = '';
@@ -142,70 +141,63 @@
                         btn.innerText = opt;
                         btn.classList.add('option-btn');
                         btn.onclick = () => {
-                            if (!canAnswer || !gameActive) return;
-                            // Убираем выделение с предыдущей кнопки
-                            if (selectedBtn) selectedBtn.classList.remove('selected');
-                            btn.classList.add('selected');
-                            selectedBtn = btn;
-                            // Отправляем ответ (можно менять несколько раз)
+                            if (!roundActive || !gameActive) return;
                             fetch('/answer', {
                                 method: 'POST',
                                 headers: {'Content-Type': 'application/json'},
                                 body: JSON.stringify({sid: sid, answer: i})
                             });
+                            if (selectedBtn) selectedBtn.classList.remove('selected');
+                            btn.classList.add('selected');
+                            selectedBtn = btn;
                         };
                         optsDiv.appendChild(btn);
                     });
-                    // Запускаем локальный таймер на основе round_start_time
-                    currentRoundStartTime = state.round_start_time;
-                    if (timerInterval) clearInterval(timerInterval);
-                    timerInterval = setInterval(() => {
-                        if (!currentRoundStartTime) return;
-                        const elapsed = (Date.now() / 1000) - currentRoundStartTime;
-                        const remaining = Math.max(0, roundDuration - Math.floor(elapsed));
-                        document.getElementById('timer').innerText = `⏱️ ${remaining}`;
-                        if (remaining <= 0) {
-                            clearInterval(timerInterval);
-                            document.getElementById('timer').innerText = '⏰ 0';
-                            canAnswer = false;
+                    // Если уже был ответ у этого игрока, подсветим его
+                    if (state.player_answers && state.player_answers[myIdx] !== undefined && state.player_answers[myIdx] !== null) {
+                        const btns = document.querySelectorAll('.option-btn');
+                        const ans = state.player_answers[myIdx];
+                        if (btns[ans]) {
+                            btns[ans].classList.add('selected');
+                            selectedBtn = btns[ans];
                         }
-                    }, 200);
-                } else {
-                    // Обновляем таймер, если вопрос тот же
-                    if (currentRoundStartTime) {
-                        const elapsed = (Date.now() / 1000) - currentRoundStartTime;
-                        const remaining = Math.max(0, roundDuration - Math.floor(elapsed));
-                        document.getElementById('timer').innerText = `⏱️ ${remaining}`;
-                        if (remaining <= 0) canAnswer = false;
                     }
                 }
+                // Обновляем таймер
+                document.getElementById('timer').innerText = `⏱️ ${state.time_left}`;
+                if (state.time_left <= 0) {
+                    document.getElementById('timer').innerText = '⏰ 0';
+                    roundActive = false;
+                }
             } else {
-                // Раунд не активен
-                if (timerInterval) clearInterval(timerInterval);
-                document.getElementById('timer').innerText = '⏱️ --';
-                // Если есть результаты раунда – показать модальное окно
+                // Неактивный раунд – показываем результаты, если есть
                 if (state.round_results && !state.round_active) {
-                    const results = state.round_results;
-                    const messagesHtml = results.messages.map(msg => {
+                    const res = state.round_results;
+                    const messagesHtml = res.messages.map(msg => {
                         if (msg.includes('правильно')) return `<div>✅ ${msg}</div>`;
                         else return `<div>❌ ${msg}</div>`;
                     }).join('');
-                    const scoreHtml = `<div>Промежуточный счёт: ${results.scores[0]} : ${results.scores[1]}</div>`;
+                    const scoreHtml = `<div>Промежуточный счёт: ${res.scores[0]} : ${res.scores[1]}</div>`;
                     const modal = document.getElementById('resultModal');
                     document.getElementById('modalResults').innerHTML = messagesHtml + scoreHtml;
-                    document.getElementById('modalCorrect').innerHTML = `✅ Правильный ответ: ${results.correct_text}`;
+                    document.getElementById('modalCorrect').innerHTML = `✅ Правильный ответ: ${res.correct_text}`;
                     modal.classList.add('visible');
                     setTimeout(() => modal.classList.remove('visible'), 4000);
-                    // Очищаем, чтобы не показывать повторно
-                    state.round_results = null;
-                } else if (!state.round_active && !state.game_over && state.question === null) {
-                    document.getElementById('question').innerText = "Ожидание начала раунда...";
+                }
+                if (!state.round_active && !state.game_over) {
+                    document.getElementById('question').innerText = "Раунд завершён. Следующий вопрос через несколько секунд...";
+                    document.getElementById('options').innerHTML = '';
+                    roundActive = false;
+                }
+                // Если игра ещё не началась
+                if (!state.round_active && !state.game_over && state.q_idx === 0 && !state.round_results) {
+                    document.getElementById('question').innerText = "Ожидание начала игры...";
                 }
             }
         } catch(e) { console.error(e); }
     }
 
-    setInterval(fetchState, 800);
+    pollInterval = setInterval(fetchState, 200);
     fetchState();
 </script>
 </body>

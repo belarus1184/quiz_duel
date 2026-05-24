@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Викторина-Дуэль</title>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
@@ -67,35 +67,43 @@
 <body>
 <div class="container">
     <h1>📚 Викторина-Дуэль</h1>
-    <div class="sub">Вызови друга на интеллектуальный поединок</div>
+    <div class="sub" id="subHeader">Вызови друга на интеллектуальный поединок</div>
     <div class="card">
-        <form action="/create" method="post">
+        <!-- Форма создания игры (видна, если нет параметра room) -->
+        <form action="/create" method="post" id="createForm">
             <div class="input-group">
                 <input type="text" name="name" placeholder="Ваше имя" required autocomplete="off">
             </div>
             <button type="submit" class="create-btn">✨ Создать игру</button>
         </form>
-        <div class="or">–––––––– или подключиться по коду ––––––––</div>
-        <form action="/join" method="post" class="join-form">
+        <div id="orDiv" class="or">–––––––– или подключиться по коду ––––––––</div>
+        <!-- Форма присоединения -->
+        <form action="/join" method="post" class="join-form" id="joinForm">
             <div class="input-group">
                 <input type="text" name="name" placeholder="Ваше имя" required autocomplete="off">
             </div>
-            <div class="input-group">
-                <input type="text" name="room" placeholder="Код комнаты" required autocomplete="off">
+            <div id="roomGroup" class="input-group">
+                <input type="text" name="room" placeholder="Код комнаты" autocomplete="off">
             </div>
-            <button type="submit" class="join-btn">🔗 Подключиться</button>
+            <button type="submit" class="join-btn" id="joinBtn">🔗 Подключиться</button>
         </form>
     </div>
-    <div class="info">⚡ 25 секунд на ответ · Результаты после раунда</div>
+    <div class="info">⚡ 25 секунд на ответ · Можно менять ответ</div>
 </div>
+
 <script>
-    // Берём параметр room из адресной строки
     const urlParams = new URLSearchParams(window.location.search);
     const roomFromUrl = urlParams.get('room');
     if (roomFromUrl) {
-        // Находим поле ввода для кода комнаты и заполняем его
+        // Режим присоединения по ссылке (друг)
+        document.getElementById('createForm').style.display = 'none';
+        document.getElementById('orDiv').style.display = 'none';
+        // Заполняем код комнаты и скрываем поле
         const roomInput = document.querySelector('input[name="room"]');
-        if (roomInput) roomInput.value = roomFromUrl;
+        roomInput.value = roomFromUrl;
+        document.getElementById('roomGroup').style.display = 'none';
+        document.getElementById('joinBtn').innerText = '🔗 Присоединиться';
+        document.getElementById('subHeader').innerText = 'Присоединитесь к игре друга';
     }
 </script>
 </body>

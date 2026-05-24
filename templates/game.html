@@ -2,59 +2,64 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <title>Викторина-Дуэль — Кто умнее?</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Викторина-Дуэль</title>
     <style>
         * { margin:0; padding:0; box-sizing:border-box; }
-        html, body { width:100%; min-height:100vh; background: linear-gradient(135deg, #0b1120 0%, #1e293b 100%); }
-        body { font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; align-items: center; justify-content: center; padding:12px; }
-        .game-container { width:100%; max-width:1100px; background:rgba(255,255,255,0.1); backdrop-filter:blur(12px); border-radius:32px; padding:24px; box-shadow:0 25px 45px rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.2); }
-        .header-title { text-align:center; font-size:1.3rem; font-style:italic; font-weight:600; letter-spacing:1px; color:#ffd966; text-shadow:0 2px 5px rgba(0,0,0,0.3); margin-bottom:20px; }
-        .scoreboard { display:flex; justify-content:space-between; gap:15px; margin-bottom:25px; }
-        .score-card { flex:1; background:#1e293b; border-radius:28px; padding:12px; text-align:center; box-shadow:0 8px 20px rgba(0,0,0,0.2); border-bottom:3px solid #ffd966; }
-        .score-label { font-size:0.9rem; text-transform:uppercase; color:#94a3b8; margin-bottom:5px; font-weight:500; }
-        .score-value { font-size:2.2rem; font-weight:800; color:#facc15; line-height:1; }
-        .question-info { text-align:center; margin-bottom:15px; color:#cbd5e1; font-size:0.9rem; font-weight:500; }
-        .question-area { background:#0f172a; border-radius:40px; padding:24px; margin-bottom:25px; text-align:center; border:1px solid #334155; }
-        .timer { font-size:1.6rem; font-weight:700; background:#1e293b; display:inline-block; padding:6px 20px; border-radius:50px; margin-bottom:20px; color:#facc15; font-family:monospace; }
-        .question { font-size:1.3rem; font-weight:600; color:#f1f5f9; margin-bottom:25px; }
-        .options { display:grid; grid-template-columns:1fr; gap:12px; }
-        .option-btn { background:#1e293b; border:1px solid #475569; border-radius:60px; padding:14px 12px; font-size:0.95rem; font-weight:500; color:#f1f5f9; cursor:pointer; transition:all 0.2s; }
-        .option-btn.selected { background:#eab308; color:#0f172a; border-color:#eab308; }
-        .option-btn.correct-highlight { background:#22c55e; border-color:#22c55e; color:white; }
-        .option-btn.wrong-highlight { background:#ef4444; border-color:#ef4444; color:white; }
-        .option-btn:disabled { cursor:not-allowed; opacity:0.7; }
-        .modal { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; z-index:2000; visibility:hidden; opacity:0; transition:visibility 0s, opacity 0.3s; }
-        .modal.visible { visibility:visible; opacity:1; }
-        .modal-content { background:#1e293b; border-radius:48px; padding:24px; text-align:center; max-width:90%; width:400px; border:1px solid #475569; }
-        .modal-content h3 { font-size:1.5rem; margin-bottom:15px; color:#facc15; }
-        .modal-results { font-size:1rem; margin:15px 0; line-height:1.5; color:white; }
-        .modal-results div { margin:5px 0; }
-        .correct-answer { background:#22c55e !important; padding:8px; border-radius:40px; margin-top:10px; color:white !important; font-weight:bold; }
-        .final-table { margin-top:20px; background:#0f172a; border-radius:20px; overflow-x:auto; }
-        .final-table table { width:100%; border-collapse:collapse; color:#e2e8f0; font-size:0.8rem; }
-        .final-table th, .final-table td { padding:8px; text-align:left; border-bottom:1px solid #334155; }
-        .final-table th { background:#1e293b; color:#facc15; }
-        .tick { color:#86efac; font-weight:bold; }
-        .cross { color:#fecaca; font-weight:bold; }
-        @media (min-width: 680px) {
-            .options { grid-template-columns: repeat(2, 1fr); }
-            .game-container { padding:32px; }
-            .header-title { font-size:1.5rem; }
-            .score-value { font-size:3rem; }
-            .question { font-size:1.6rem; }
-            .timer { font-size:2rem; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #faf7f2;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
         }
+        .game-container {
+            max-width: 1000px;
+            width: 100%;
+            background: white;
+            border-radius: 48px;
+            padding: 32px;
+            box-shadow: 0 20px 35px rgba(0,0,0,0.05);
+        }
+        .scoreboard { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 40px; }
+        .score-card { flex: 1; background: #fefcf8; border-radius: 28px; padding: 16px; text-align: center; border: 1px solid #efe6db; }
+        .score-label { font-size: 1rem; text-transform: uppercase; color: #7f8c6d; margin-bottom: 8px; }
+        .score-value { font-size: 2.8rem; font-weight: 800; color: #2c3e2f; line-height: 1; transition: transform 0.2s; }
+        .score-value.animate { transform: scale(1.2); }
+        .question-area { background: #fefcf8; border-radius: 32px; padding: 32px; text-align: center; border: 1px solid #efe6db; }
+        .timer { font-size: 2rem; font-weight: 700; background: #f4f1e8; display: inline-block; padding: 8px 24px; border-radius: 60px; margin-bottom: 24px; font-family: monospace; }
+        .question { font-size: 1.6rem; font-weight: 600; color: #2c3e2f; margin-bottom: 32px; }
+        .options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .option-btn { background: #f4f1e8; border: 1px solid #e2dcd0; border-radius: 60px; padding: 16px 12px; font-size: 1rem; font-weight: 500; color: #2c3e2f; cursor: pointer; transition: all 0.2s; }
+        .option-btn:hover:not(:disabled) { background: #e8e2d6; transform: scale(1.02); }
+        .option-btn.selected { background: #fde047; border-color: #eab308; color: #854d0e; }
+        .option-btn.correct-highlight { background: #86efac; border-color: #22c55e; color: #14532d; }
+        .option-btn.wrong-highlight { background: #fecaca; border-color: #ef4444; color: #7f1d1d; }
+        .option-btn:disabled { cursor: not-allowed; opacity: 0.7; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; z-index: 2000; visibility: hidden; opacity: 0; transition: visibility 0s, opacity 0.3s; }
+        .modal.visible { visibility: visible; opacity: 1; }
+        .modal-content { background: white; border-radius: 48px; padding: 32px 48px; text-align: center; max-width: 450px; width: 90%; }
+        .modal-content h3 { font-size: 1.8rem; margin-bottom: 20px; color: #2c3e2f; }
+        .modal-results { font-size: 1.1rem; margin: 15px 0; line-height: 1.6; }
+        .correct-answer { background: #86efac; padding: 8px; border-radius: 40px; margin-top: 10px; }
+        .final-table { margin-top: 20px; background: #0f172a; border-radius: 24px; overflow-x: auto; }
+        .final-table table { width: 100%; border-collapse: collapse; color: #e2e8f0; }
+        .final-table th, .final-table td { padding: 10px; text-align: left; border-bottom: 1px solid #334155; }
+        .final-table th { background: #1e293b; color: #facc15; }
+        .tick { color: #86efac; font-weight: bold; }
+        .cross { color: #fecaca; font-weight: bold; }
+        @media (max-width: 680px) { .options { grid-template-columns: 1fr; } .question { font-size: 1.2rem; } .score-value { font-size: 2rem; } .timer { font-size: 1.5rem; } }
     </style>
 </head>
 <body>
 <div class="game-container">
-    <div class="header-title">📖 Интеллектуальная дуэль «Кто умнее»</div>
     <div class="scoreboard">
         <div class="score-card"><div class="score-label" id="label1">{{ name1 }}</div><div class="score-value" id="score1">0</div></div>
         <div class="score-card"><div class="score-label" id="label2">{{ name2 }}</div><div class="score-value" id="score2">0</div></div>
     </div>
-    <div class="question-info" id="questionCounter"></div>
+    <div class="question-info" id="questionCounter" style="text-align:center; margin-bottom:20px; color:#7f8c6d; font-weight:500;"></div>
     <div class="question-area">
         <div class="timer" id="timer">⏱️ --</div>
         <div class="question" id="question">Ожидание соперника...</div>
@@ -79,122 +84,128 @@
     let timerInt = null;
     let selectedBtn = null;
     let gameActive = true;
-
-    const evtSource = new EventSource(`/stream?sid=${sid}`);
+    let pollInterval = null;
 
     function setScoreAnimated(s1, s2) {
         const el1 = document.getElementById('score1');
         const el2 = document.getElementById('score2');
-        el1.classList.add('animate');
-        el2.classList.add('animate');
+        el1.classList.add('animate'); el2.classList.add('animate');
         setTimeout(() => {
             el1.innerText = s1;
             el2.innerText = s2;
-            el1.classList.remove('animate');
-            el2.classList.remove('animate');
+            el1.classList.remove('animate'); el2.classList.remove('animate');
         }, 200);
     }
 
-    function showQuestion(data) {
-        if (timerInt) clearInterval(timerInt);
-        currentQ = data.index;
-        canAnswer = true;
-        document.getElementById('questionCounter').innerHTML = `Вопрос ${currentQ+1} из ${data.total}`;
-        document.getElementById('question').innerText = data.text;
-        const optsDiv = document.getElementById('options');
-        optsDiv.innerHTML = '';
-        data.options.forEach((opt, i) => {
-            const btn = document.createElement('button');
-            btn.innerText = opt;
-            btn.classList.add('option-btn');
-            btn.onclick = () => {
-                if (!canAnswer || !gameActive) return;
-                if (selectedBtn) selectedBtn.classList.remove('selected');
-                btn.classList.add('selected');
-                selectedBtn = btn;
-                fetch('/answer', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({sid: sid, answer: i})
-                });
-                canAnswer = false;
-            };
-            optsDiv.appendChild(btn);
-        });
-        let timeLeft = data.time;
-        const timerElem = document.getElementById('timer');
-        timerElem.innerText = `⏱️ ${timeLeft}`;
-        timerInt = setInterval(() => {
-            timeLeft--;
-            timerElem.innerText = `⏱️ ${timeLeft}`;
-            if (timeLeft <= 0) {
-                clearInterval(timerInt);
-                timerElem.innerText = '⏰ 0';
+    async function fetchState() {
+        try {
+            const resp = await fetch('/state');
+            const state = await resp.json();
+            if (state.error) return;
+
+            // Обновляем счёт и имена
+            if (state.scores) {
+                document.getElementById('score1').innerText = state.scores[0];
+                document.getElementById('score2').innerText = state.scores[1];
+            }
+            if (state.players) {
+                document.getElementById('label1').innerText = state.players[0] || "Игрок 1";
+                document.getElementById('label2').innerText = state.players[1] || "Игрок 2";
+            }
+
+            // Завершение игры
+            if (state.game_over) {
+                clearInterval(pollInterval);
+                gameActive = false;
+                let message = '';
+                if (state.winner === null) {
+                    message = `🤝 Ничья! Счёт ${state.scores[0]} : ${state.scores[1]}`;
+                } else if (state.winner === (myIdx === 0 ? state.players[0] : state.players[1])) {
+                    message = `🏆 ПОЗДРАВЛЯЕМ! Вы победили!\nИтог игры: Игрок ${state.winner} победил со счётом ${state.winner_score} : ${state.loser_score}`;
+                } else {
+                    message = `Итог игры: Игрок ${state.winner} победил со счётом ${state.winner_score} : ${state.loser_score}`;
+                }
+                // Построение таблицы истории
+                let historyHtml = '<div class="final-table"><table><thead><tr><th>Вопрос</th><th>' + state.players[0] + '</th><th>' + state.players[1] + '</th></tr></thead><tbody>';
+                for (let q of state.history) {
+                    let ans1 = q.answer1;
+                    let ans2 = q.answer2;
+                    let correct = q.correct;
+                    let status1 = (ans1 === correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
+                    let status2 = (ans2 === correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
+                    historyHtml += `<tr><td>${q.question.substring(0, 70)}...</td><td>${status1}</td><td>${status2}</td></tr>`;
+                }
+                historyHtml += '</tbody></table></div>';
+                document.getElementById('question').innerHTML = message.replace(/\n/g, '<br>') + historyHtml;
+                document.getElementById('options').innerHTML = '';
+                document.getElementById('timer').style.display = 'none';
+                document.getElementById('questionCounter').innerHTML = '';
+                return;
+            }
+
+            // Если раунд активен и есть вопрос
+            if (state.round_active && state.question) {
+                document.getElementById('questionCounter').innerHTML = `Вопрос ${state.q_idx+1} из ${state.total_questions}`;
+                if (currentQ !== state.q_idx) {
+                    // Новый вопрос
+                    currentQ = state.q_idx;
+                    canAnswer = true;
+                    document.getElementById('question').innerText = state.question;
+                    const optsDiv = document.getElementById('options');
+                    optsDiv.innerHTML = '';
+                    state.options.forEach((opt, i) => {
+                        const btn = document.createElement('button');
+                        btn.innerText = opt;
+                        btn.classList.add('option-btn');
+                        btn.onclick = () => {
+                            if (!canAnswer || !gameActive) return;
+                            canAnswer = false;
+                            if (selectedBtn) selectedBtn.classList.remove('selected');
+                            btn.classList.add('selected');
+                            selectedBtn = btn;
+                            fetch('/answer', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({sid: sid, answer: i})
+                            });
+                        };
+                        optsDiv.appendChild(btn);
+                    });
+                    if (timerInt) clearInterval(timerInt);
+                }
+                const timeLeft = state.time_left;
+                document.getElementById('timer').innerText = `⏱️ ${timeLeft}`;
+                if (timeLeft <= 0) {
+                    document.getElementById('timer').innerText = '⏰ 0';
+                    canAnswer = false;
+                }
+            } else if (!state.round_active && !state.game_over && currentQ !== -1) {
+                // Раунд только что завершился – показать модальное окно
+                if (state.player_answers && state.correct_index !== undefined) {
+                    const messages = [];
+                    for (let i=0; i<2; i++) {
+                        let ans = state.player_answers[i];
+                        if (ans === state.correct_index) messages.push(`${state.players[i]} ответил правильно`);
+                        else if (ans !== undefined && ans !== null && ans !== -1) messages.push(`${state.players[i]} ответил неправильно`);
+                        else messages.push(`${state.players[i]} не ответил`);
+                    }
+                    const modal = document.getElementById('resultModal');
+                    document.getElementById('modalResults').innerHTML = messages.join('<br>') + `<br><strong>Промежуточный счёт: ${state.scores[0]} : ${state.scores[1]}</strong>`;
+                    document.getElementById('modalCorrect').innerHTML = `✅ Правильный ответ: ${state.options[state.correct_index]}`;
+                    modal.classList.add('visible');
+                    setTimeout(() => modal.classList.remove('visible'), 4000);
+                    currentQ = -1; // чтобы не показывать повторно
+                }
+                document.getElementById('question').innerText = "Раунд завершён. Следующий вопрос через несколько секунд...";
+                document.getElementById('options').innerHTML = '';
                 canAnswer = false;
             }
-        }, 1000);
+        } catch(e) { console.error(e); }
     }
 
-    evtSource.addEventListener('new_question', (e) => {
-        const data = JSON.parse(e.data);
-        showQuestion(data);
-    });
-
-    evtSource.addEventListener('round_result', (e) => {
-        const data = JSON.parse(e.data);
-        document.getElementById('label1').innerText = data.names[0];
-        document.getElementById('label2').innerText = data.names[1];
-        const btns = document.querySelectorAll('.option-btn');
-        btns.forEach((btn, idx) => {
-            btn.classList.remove('correct-highlight', 'wrong-highlight');
-            if (idx === data.correct_index) {
-                btn.classList.add('correct-highlight');
-            } else if (data.player_answers && data.player_answers[myIdx] === idx && idx !== data.correct_index) {
-                btn.classList.add('wrong-highlight');
-            }
-            btn.disabled = true;
-        });
-        const messagesHtml = data.messages.map(msg => {
-            if (msg.includes('правильно')) return `<div>✅ ${msg}</div>`;
-            else return `<div>❌ ${msg}</div>`;
-        }).join('');
-        const scoreHtml = `<div>Промежуточный счёт: ${data.scores[0]} : ${data.scores[1]}</div>`;
-        const modal = document.getElementById('resultModal');
-        document.getElementById('modalResults').innerHTML = messagesHtml + scoreHtml;
-        document.getElementById('modalCorrect').innerHTML = `✅ Правильный ответ: ${data.correct_text}`;
-        modal.classList.add('visible');
-        setScoreAnimated(data.scores[0], data.scores[1]);
-        setTimeout(() => modal.classList.remove('visible'), 4000);
-    });
-
-    evtSource.addEventListener('game_over', (e) => {
-        const data = JSON.parse(e.data);
-        gameActive = false;
-        if (timerInt) clearInterval(timerInt);
-        evtSource.close();
-        let message = '';
-        if (data.winner === null) {
-            message = `🤝 Ничья! Счёт ${data.scores[0]} : ${data.scores[1]}`;
-        } else if (data.winner === (myIdx === 0 ? data.names[0] : data.names[1])) {
-            message = `🏆 ПОЗДРАВЛЯЕМ! Вы победили!\nИтог игры: Игрок ${data.winner} победил со счётом ${data.winner_score} : ${data.loser_score}`;
-        } else {
-            message = `Итог игры: Игрок ${data.winner} победил со счётом ${data.winner_score} : ${data.loser_score}`;
-        }
-        let historyHtml = '<div class="final-table"><table><thead><tr><th>Вопрос</th><th>' + data.names[0] + '</th><th>' + data.names[1] + '</th></tr></thead><tbody>';
-        for (let q of data.history) {
-            let ans1 = q.answer1;
-            let ans2 = q.answer2;
-            let correct = q.correct;
-            let status1 = (ans1 === correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
-            let status2 = (ans2 === correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
-            historyHtml += `<tr><td>${q.question.substring(0, 70)}...</td><td>${status1}</td><td>${status2}</td></tr>`;
-        }
-        historyHtml += '</tbody></table></div>';
-        document.getElementById('question').innerHTML = message.replace(/\n/g, '<br>') + historyHtml;
-        document.getElementById('options').innerHTML = '';
-        document.getElementById('timer').style.display = 'none';
-        document.getElementById('questionCounter').innerHTML = '';
-    });
+    // Запускаем polling каждые 1.5 секунды
+    pollInterval = setInterval(fetchState, 1500);
+    fetchState();
 </script>
 </body>
 </html>

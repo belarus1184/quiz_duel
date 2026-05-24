@@ -1,298 +1,200 @@
-from flask import Flask, render_template, request, session, redirect, url_for, jsonify, Response
-import uuid
-import time
-import threading
-import json
-import random
-import os
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>Викторина-Дуэль — Кто умнее?</title>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        html, body { width:100%; min-height:100vh; background: linear-gradient(135deg, #0b1120 0%, #1e293b 100%); }
+        body { font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; align-items: center; justify-content: center; padding:12px; }
+        .game-container { width:100%; max-width:1100px; background:rgba(255,255,255,0.1); backdrop-filter:blur(12px); border-radius:32px; padding:24px; box-shadow:0 25px 45px rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.2); }
+        .header-title { text-align:center; font-size:1.3rem; font-style:italic; font-weight:600; letter-spacing:1px; color:#ffd966; text-shadow:0 2px 5px rgba(0,0,0,0.3); margin-bottom:20px; }
+        .scoreboard { display:flex; justify-content:space-between; gap:15px; margin-bottom:25px; }
+        .score-card { flex:1; background:#1e293b; border-radius:28px; padding:12px; text-align:center; box-shadow:0 8px 20px rgba(0,0,0,0.2); border-bottom:3px solid #ffd966; }
+        .score-label { font-size:0.9rem; text-transform:uppercase; color:#94a3b8; margin-bottom:5px; font-weight:500; }
+        .score-value { font-size:2.2rem; font-weight:800; color:#facc15; line-height:1; }
+        .question-info { text-align:center; margin-bottom:15px; color:#cbd5e1; font-size:0.9rem; font-weight:500; }
+        .question-area { background:#0f172a; border-radius:40px; padding:24px; margin-bottom:25px; text-align:center; border:1px solid #334155; }
+        .timer { font-size:1.6rem; font-weight:700; background:#1e293b; display:inline-block; padding:6px 20px; border-radius:50px; margin-bottom:20px; color:#facc15; font-family:monospace; }
+        .question { font-size:1.3rem; font-weight:600; color:#f1f5f9; margin-bottom:25px; }
+        .options { display:grid; grid-template-columns:1fr; gap:12px; }
+        .option-btn { background:#1e293b; border:1px solid #475569; border-radius:60px; padding:14px 12px; font-size:0.95rem; font-weight:500; color:#f1f5f9; cursor:pointer; transition:all 0.2s; }
+        .option-btn.selected { background:#eab308; color:#0f172a; border-color:#eab308; }
+        .option-btn.correct-highlight { background:#22c55e; border-color:#22c55e; color:white; }
+        .option-btn.wrong-highlight { background:#ef4444; border-color:#ef4444; color:white; }
+        .option-btn:disabled { cursor:not-allowed; opacity:0.7; }
+        .modal { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; z-index:2000; visibility:hidden; opacity:0; transition:visibility 0s, opacity 0.3s; }
+        .modal.visible { visibility:visible; opacity:1; }
+        .modal-content { background:#1e293b; border-radius:48px; padding:24px; text-align:center; max-width:90%; width:400px; border:1px solid #475569; }
+        .modal-content h3 { font-size:1.5rem; margin-bottom:15px; color:#facc15; }
+        .modal-results { font-size:1rem; margin:15px 0; line-height:1.5; color:white; }
+        .modal-results div { margin:5px 0; }
+        .correct-answer { background:#22c55e !important; padding:8px; border-radius:40px; margin-top:10px; color:white !important; font-weight:bold; }
+        .final-table { margin-top:20px; background:#0f172a; border-radius:20px; overflow-x:auto; }
+        .final-table table { width:100%; border-collapse:collapse; color:#e2e8f0; font-size:0.8rem; }
+        .final-table th, .final-table td { padding:8px; text-align:left; border-bottom:1px solid #334155; }
+        .final-table th { background:#1e293b; color:#facc15; }
+        .tick { color:#86efac; font-weight:bold; }
+        .cross { color:#fecaca; font-weight:bold; }
+        @media (min-width: 680px) {
+            .options { grid-template-columns: repeat(2, 1fr); }
+            .game-container { padding:32px; }
+            .header-title { font-size:1.5rem; }
+            .score-value { font-size:3rem; }
+            .question { font-size:1.6rem; }
+            .timer { font-size:2rem; }
+        }
+    </style>
+</head>
+<body>
+<div class="game-container">
+    <div class="header-title">📖 Интеллектуальная дуэль «Кто умнее»</div>
+    <div class="scoreboard">
+        <div class="score-card"><div class="score-label" id="label1">{{ name1 }}</div><div class="score-value" id="score1">0</div></div>
+        <div class="score-card"><div class="score-label" id="label2">{{ name2 }}</div><div class="score-value" id="score2">0</div></div>
+    </div>
+    <div class="question-info" id="questionCounter"></div>
+    <div class="question-area">
+        <div class="timer" id="timer">⏱️ --</div>
+        <div class="question" id="question">Ожидание соперника...</div>
+        <div class="options" id="options"></div>
+    </div>
+</div>
 
-app = Flask(__name__)
-app.secret_key = 'sse_secret'
+<div id="resultModal" class="modal">
+    <div class="modal-content">
+        <h3>📊 Результаты раунда</h3>
+        <div id="modalResults" class="modal-results"></div>
+        <div id="modalCorrect" class="correct-answer"></div>
+    </div>
+</div>
 
-games = {}
-event_streams = {}
+<script>
+    const sid = "{{ sid }}";
+    const myIdx = {{ player_idx }};
+    const totalQ = {{ total_questions }};
+    let currentQ = -1;
+    let canAnswer = true;
+    let timerInt = null;
+    let selectedBtn = null;
+    let gameActive = true;
 
-def load_questions():
-    if not os.path.exists('questions.json'):
-        return [
-            {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
-            {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
-        ]
-    for encoding in ['utf-8', 'cp1251', 'latin-1']:
-        try:
-            with open('questions.json', 'r', encoding=encoding) as f:
-                qlist = json.load(f)
-                random.shuffle(qlist)
-                print(f"Вопросы загружены (кодировка {encoding})")
-                return qlist
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            continue
-    print("Не удалось загрузить questions.json, использую резервный список")
-    return [
-        {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
-        {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
-    ]
+    const evtSource = new EventSource(`/stream?sid=${sid}`);
 
-QUESTIONS = load_questions()
-ROUND_TIME = 25
-PAUSE_TIME = 5
-
-def send_event(sid, event, data):
-    if sid not in event_streams:
-        event_streams[sid] = []
-    event_streams[sid].append((event, data))
-
-def broadcast(room, event, data):
-    if room not in games:
-        return
-    for sid in games[room]['players']:
-        send_event(sid, event, data)
-
-def start_round(room):
-    game = games[room]
-    q_idx = game['q_idx']
-    if q_idx >= len(QUESTIONS):
-        end_game(room)
-        return
-    q = QUESTIONS[q_idx]
-    game['current_question'] = q
-    game['correct'] = q['correct']
-    game['round_active'] = True
-    game['answered'] = [False, False]
-    game['player_answers'] = [None, None]
-    game['round_start_time'] = time.time()
-    broadcast(room, 'new_question', {
-        'index': q_idx,
-        'text': q['question'],
-        'options': q['options'],
-        'time': ROUND_TIME,
-        'total': len(QUESTIONS)
-    })
-    def timer():
-        time.sleep(ROUND_TIME)
-        if room in games and games[room].get('round_active'):
-            finish_round(room)
-    threading.Thread(target=timer, daemon=True).start()
-
-def finish_round(room):
-    game = games[room]
-    if not game.get('round_active'):
-        return
-    game['round_active'] = False
-    correct = game['correct']
-    answers = game['player_answers']
-    new_scores = game['scores'][:]
-    for i, ans in enumerate(answers):
-        if ans == correct:
-            new_scores[i] += 1
-    game['scores'] = new_scores
-    if 'history' not in game:
-        game['history'] = []
-    game['history'].append({
-        'question': game['current_question']['question'],
-        'answers': answers.copy(),
-        'correct': correct
-    })
-    names = game['names']
-    messages = []
-    for i, ans in enumerate(answers):
-        if ans == correct:
-            messages.append(f"{names[i]} ответил правильно")
-        elif ans is not None and ans != -1:
-            messages.append(f"{names[i]} ответил неправильно")
-        else:
-            messages.append(f"{names[i]} не ответил")
-    broadcast(room, 'round_result', {
-        'messages': messages,
-        'scores': new_scores,
-        'names': names,
-        'correct_index': correct,
-        'correct_text': game['current_question']['options'][correct]
-    })
-    def next_round():
-        time.sleep(PAUSE_TIME)
-        if room in games:
-            game = games[room]
-            game['q_idx'] += 1
-            start_round(room)
-    threading.Thread(target=next_round, daemon=True).start()
-
-def end_game(room):
-    game = games[room]
-    scores = game['scores']
-    names = game['names']
-    if scores[0] > scores[1]:
-        winner = names[0]
-        winner_score = scores[0]
-        loser_score = scores[1]
-    elif scores[1] > scores[0]:
-        winner = names[1]
-        winner_score = scores[1]
-        loser_score = scores[0]
-    else:
-        winner = None
-        winner_score = scores[0]
-        loser_score = scores[1]
-    history_table = []
-    for h in game.get('history', []):
-        history_table.append({
-            'question': h['question'],
-            'answer1': h['answers'][0],
-            'answer2': h['answers'][1],
-            'correct': h['correct']
-        })
-    broadcast(room, 'game_over', {
-        'winner': winner,
-        'winner_score': winner_score,
-        'loser_score': loser_score,
-        'scores': scores,
-        'names': names,
-        'history': history_table
-    })
-    def clean():
-        time.sleep(10)
-        if room in games:
-            del games[room]
-    threading.Thread(target=clean, daemon=True).start()
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/create', methods=['POST'])
-def create():
-    name = request.form.get('name', '').strip()
-    if not name:
-        return "Имя обязательно", 400
-    room = str(uuid.uuid4())[:6]
-    sid = str(uuid.uuid4())
-    session['sid'] = sid
-    session['room'] = room
-    session['name'] = name
-    games[room] = {
-        'players': [sid],
-        'names': [name, None],
-        'scores': [0, 0],
-        'q_idx': 0,
-        'round_active': False,
-        'current_question': None,
-        'correct': None,
-        'answered': [False, False],
-        'player_answers': [None, None],
-        'round_start_time': 0,
-        'history': []
+    function setScoreAnimated(s1, s2) {
+        const el1 = document.getElementById('score1');
+        const el2 = document.getElementById('score2');
+        el1.classList.add('animate');
+        el2.classList.add('animate');
+        setTimeout(() => {
+            el1.innerText = s1;
+            el2.innerText = s2;
+            el1.classList.remove('animate');
+            el2.classList.remove('animate');
+        }, 200);
     }
-    return redirect(url_for('wait'))
 
-@app.route('/join', methods=['POST'])
-def join():
-    name = request.form.get('name', '').strip()
-    room = request.form.get('room', '').strip()
-    if not name or not room:
-        return "Имя и код комнаты обязательны", 400
-    if room not in games or len(games[room]['players']) >= 2:
-        return "Комната не найдена или занята", 400
-    sid = str(uuid.uuid4())
-    session['sid'] = sid
-    session['room'] = room
-    session['name'] = name
-    games[room]['players'].append(sid)
-    games[room]['names'][1] = name
-    if len(games[room]['players']) == 2:
-        def start():
-            time.sleep(2)
-            if room in games:
-                start_round(room)
-        threading.Thread(target=start, daemon=True).start()
-    return redirect(url_for('game'))
-
-@app.route('/wait')
-def wait():
-    room = session.get('room')
-    if not room or room not in games:
-        return redirect(url_for('index'))
-    if len(games[room]['players']) == 2:
-        return redirect(url_for('game'))
-    # Генерируем пригласительную ссылку
-    invite_link = url_for('index', _external=True) + '?room=' + room
-    return render_template('wait.html', 
-                           room=room, 
-                           name=session.get('name', ''), 
-                           invite_link=invite_link)
-
-@app.route('/check_players')
-def check_players():
-    room = request.args.get('room')
-    if room in games:
-        return {'players': len(games[room]['players'])}
-    return {'players': 0}
-
-@app.route('/game')
-def game():
-    sid = session.get('sid')
-    name = session.get('name')
-    if not sid or not name:
-        return redirect(url_for('index'))
-    room = session.get('room')
-    if not room or room not in games:
-        return redirect(url_for('index'))
-    player_idx = 0 if games[room]['players'][0] == sid else 1
-    session['player_idx'] = player_idx
-    names = games[room]['names']
-    name1 = names[0] if names[0] else "Игрок 1"
-    name2 = names[1] if names[1] else "Игрок 2"
-    return render_template('game.html', sid=sid, name=name, player_idx=player_idx, total_questions=len(QUESTIONS), name1=name1, name2=name2)
-
-@app.route('/state')
-def state():
-    room = session.get('room')
-    if not room or room not in games:
-        return jsonify({'error': 'no game'})
-    game = games[room]
-    state = {
-        'players': game['names'],
-        'scores': game['scores'],
-        'round_active': game['round_active'],
-        'q_idx': game['q_idx'],
-        'total_questions': len(QUESTIONS),
-        'game_over': game.get('game_over', False),
-        'winner': game.get('winner'),
-        'winner_score': game.get('winner_score'),
-        'loser_score': game.get('loser_score')
+    function showQuestion(data) {
+        if (timerInt) clearInterval(timerInt);
+        currentQ = data.index;
+        canAnswer = true;
+        document.getElementById('questionCounter').innerHTML = `Вопрос ${currentQ+1} из ${data.total}`;
+        document.getElementById('question').innerText = data.text;
+        const optsDiv = document.getElementById('options');
+        optsDiv.innerHTML = '';
+        data.options.forEach((opt, i) => {
+            const btn = document.createElement('button');
+            btn.innerText = opt;
+            btn.classList.add('option-btn');
+            btn.onclick = () => {
+                if (!canAnswer || !gameActive) return;
+                if (selectedBtn) selectedBtn.classList.remove('selected');
+                btn.classList.add('selected');
+                selectedBtn = btn;
+                fetch('/answer', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({sid: sid, answer: i})
+                });
+                canAnswer = false;
+            };
+            optsDiv.appendChild(btn);
+        });
+        let timeLeft = data.time;
+        const timerElem = document.getElementById('timer');
+        timerElem.innerText = `⏱️ ${timeLeft}`;
+        timerInt = setInterval(() => {
+            timeLeft--;
+            timerElem.innerText = `⏱️ ${timeLeft}`;
+            if (timeLeft <= 0) {
+                clearInterval(timerInt);
+                timerElem.innerText = '⏰ 0';
+                canAnswer = false;
+            }
+        }, 1000);
     }
-    if game['round_active'] and game['current_question']:
-        elapsed = time.time() - game['round_start_time']
-        remaining = max(0, ROUND_TIME - int(elapsed))
-        state['question'] = game['current_question']['question']
-        state['options'] = game['current_question']['options']
-        state['time_left'] = remaining
-        state['correct_index'] = game['correct']
-        state['player_answers'] = game['player_answers']
-    else:
-        state['question'] = None
-        state['options'] = []
-        state['time_left'] = 0
-    return jsonify(state)
 
-@app.route('/answer', methods=['POST'])
-def answer():
-    data = request.get_json()
-    sid = data.get('sid')
-    answer_idx = data.get('answer')
-    room = session.get('room')
-    if not room or room not in games:
-        return jsonify({'error': 'no game'}), 400
-    game = games[room]
-    if not game.get('round_active'):
-        return jsonify({'error': 'round not active'}), 400
-    player_idx = 0 if game['players'][0] == sid else 1
-    if game['answered'][player_idx]:
-        return jsonify({'error': 'already answered'}), 400
-    game['player_answers'][player_idx] = answer_idx
-    game['answered'][player_idx] = True
-    if all(game['answered']):
-        finish_round(room)
-    return jsonify({'ok': True})
+    evtSource.addEventListener('new_question', (e) => {
+        const data = JSON.parse(e.data);
+        showQuestion(data);
+    });
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
+    evtSource.addEventListener('round_result', (e) => {
+        const data = JSON.parse(e.data);
+        document.getElementById('label1').innerText = data.names[0];
+        document.getElementById('label2').innerText = data.names[1];
+        const btns = document.querySelectorAll('.option-btn');
+        btns.forEach((btn, idx) => {
+            btn.classList.remove('correct-highlight', 'wrong-highlight');
+            if (idx === data.correct_index) {
+                btn.classList.add('correct-highlight');
+            } else if (data.player_answers && data.player_answers[myIdx] === idx && idx !== data.correct_index) {
+                btn.classList.add('wrong-highlight');
+            }
+            btn.disabled = true;
+        });
+        const messagesHtml = data.messages.map(msg => {
+            if (msg.includes('правильно')) return `<div>✅ ${msg}</div>`;
+            else return `<div>❌ ${msg}</div>`;
+        }).join('');
+        const scoreHtml = `<div>Промежуточный счёт: ${data.scores[0]} : ${data.scores[1]}</div>`;
+        const modal = document.getElementById('resultModal');
+        document.getElementById('modalResults').innerHTML = messagesHtml + scoreHtml;
+        document.getElementById('modalCorrect').innerHTML = `✅ Правильный ответ: ${data.correct_text}`;
+        modal.classList.add('visible');
+        setScoreAnimated(data.scores[0], data.scores[1]);
+        setTimeout(() => modal.classList.remove('visible'), 4000);
+    });
+
+    evtSource.addEventListener('game_over', (e) => {
+        const data = JSON.parse(e.data);
+        gameActive = false;
+        if (timerInt) clearInterval(timerInt);
+        evtSource.close();
+        let message = '';
+        if (data.winner === null) {
+            message = `🤝 Ничья! Счёт ${data.scores[0]} : ${data.scores[1]}`;
+        } else if (data.winner === (myIdx === 0 ? data.names[0] : data.names[1])) {
+            message = `🏆 ПОЗДРАВЛЯЕМ! Вы победили!\nИтог игры: Игрок ${data.winner} победил со счётом ${data.winner_score} : ${data.loser_score}`;
+        } else {
+            message = `Итог игры: Игрок ${data.winner} победил со счётом ${data.winner_score} : ${data.loser_score}`;
+        }
+        let historyHtml = '<div class="final-table"><table><thead><tr><th>Вопрос</th><th>' + data.names[0] + '</th><th>' + data.names[1] + '</th></tr></thead><tbody>';
+        for (let q of data.history) {
+            let ans1 = q.answer1;
+            let ans2 = q.answer2;
+            let correct = q.correct;
+            let status1 = (ans1 === correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
+            let status2 = (ans2 === correct) ? '<span class="tick">✅</span>' : '<span class="cross">❌</span>';
+            historyHtml += `<tr><td>${q.question.substring(0, 70)}...</td><td>${status1}</td><td>${status2}</td></tr>`;
+        }
+        historyHtml += '</tbody></table></div>';
+        document.getElementById('question').innerHTML = message.replace(/\n/g, '<br>') + historyHtml;
+        document.getElementById('options').innerHTML = '';
+        document.getElementById('timer').style.display = 'none';
+        document.getElementById('questionCounter').innerHTML = '';
+    });
+</script>
+</body>
+</html>

@@ -213,7 +213,14 @@ def wait():
         return redirect(url_for('index'))
     if len(games[room]['players']) == 2:
         return redirect(url_for('game'))
-    return render_template('wait.html', room=room, name=session.get('name', ''))
+    
+    # Генерируем абсолютную ссылку на главную страницу с параметром room
+    invite_link = url_for('index', _external=True) + '?room=' + room
+    
+    return render_template('wait.html', 
+                           room=room, 
+                           name=session.get('name', ''), 
+                           invite_link=invite_link)
 
 @app.route('/check_players')
 def check_players():

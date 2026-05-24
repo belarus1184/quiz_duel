@@ -247,19 +247,16 @@ def state():
         'history': game.get('history_table', [])
     }
     if game['round_active']:
-        elapsed = time.time() - game['round_start_time']
-        remaining = max(0, ROUND_TIME - int(elapsed))
         state['question'] = game['current_question']['question']
         state['options'] = game['current_question']['options']
-        state['time_left'] = remaining
         state['correct_index'] = game['correct']
         state['player_answers'] = game['player_answers']
+        state['round_start_time'] = game['round_start_time']  # добавляем timestamp
     else:
         state['question'] = None
         state['options'] = []
-        state['time_left'] = 0
         state['player_answers'] = [None, None]
-    # Если раунд только что завершён, добавим результаты
+        state['round_start_time'] = 0
     if game.get('round_results') and not game['round_active']:
         state['round_results'] = game['round_results']
     else:

@@ -50,7 +50,6 @@ def start_round(room):
     game['player_answers'] = [None, None]
     game['round_start_time'] = time.time()
     game['round_finished'] = False
-    # Таймер на ROUND_TIME секунд
     def timer():
         time.sleep(ROUND_TIME)
         if room in games and games[room].get('round_active'):
@@ -70,7 +69,6 @@ def finish_round(room):
         if ans == correct:
             new_scores[i] += 1
     game['scores'] = new_scores
-    # Сохраняем историю
     if 'history' not in game:
         game['history'] = []
     game['history'].append({
@@ -78,7 +76,6 @@ def finish_round(room):
         'answers': answers.copy(),
         'correct': correct
     })
-    # Формируем сообщения для модального окна
     names = game['names']
     messages = []
     for i, ans in enumerate(answers):
@@ -93,7 +90,6 @@ def finish_round(room):
         'correct_text': game['current_question']['options'][correct],
         'scores': new_scores
     }
-    # Запускаем переход к следующему раунду через PAUSE_TIME
     def next_round():
         time.sleep(PAUSE_TIME)
         if room in games:
@@ -133,7 +129,6 @@ def end_game(room):
     game['winner_score'] = winner_score
     game['loser_score'] = loser_score
     game['history_table'] = history_table
-    # Удалим комнату через 10 секунд
     def clean():
         time.sleep(10)
         if room in games:
@@ -246,17 +241,19 @@ def state():
         'loser_score': game.get('loser_score'),
         'history': game.get('history_table', [])
     }
-    if game['round_active']:
+    if game['round_active'] and game['current_question']:
+        elapsed = time.time() - game['round_start_time']
+        remaining = max(0, ROUND_TIME - int(elapsed))
         state['question'] = game['current_question']['question']
         state['options'] = game['current_question']['options']
+        state['time_left'] = remaining
         state['correct_index'] = game['correct']
         state['player_answers'] = game['player_answers']
-        state['round_start_time'] = game['round_start_time']  # добавляем timestamp
     else:
         state['question'] = None
         state['options'] = []
+        state['time_left'] = 0
         state['player_answers'] = [None, None]
-        state['round_start_time'] = 0
     if game.get('round_results') and not game['round_active']:
         state['round_results'] = game['round_results']
     else:
@@ -275,11 +272,10 @@ def answer():
     if not game.get('round_active'):
         return jsonify({'error': 'round not active'}), 400
     player_idx = 0 if game['players'][0] == sid else 1
-    if game['answered'][player_idx]:
-        return jsonify({'error': 'already answered'}), 400
+    # Разрешаем менять ответ в любое время – просто перезаписываем
     game['player_answers'][player_idx] = answer_idx
-    game['answered'][player_idx] = True
-    # Не завершаем раунд досрочно, даже если оба ответили
+    if not game['answered'][player_idx]:
+        game['answered'][player_idx] = True
     return jsonify({'ok': True})
 
 if __name__ == '__main__':

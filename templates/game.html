@@ -79,6 +79,7 @@
     let gameActive = true;
     let pollInterval = null;
     let selectedBtn = null;
+    let lastRoundId = null;      // запоминаем последний показанный раунд
 
     async function fetchState() {
         try {
@@ -109,7 +110,7 @@
                     } else {
                         msg = `Итог игры: Игрок ${state.winner} победил со счётом ${state.winner_score} : ${state.loser_score}`;
                     }
-                    let historyHtml = '<div class="final-table"><table><thead><tr><th>Вопрос</th><th>' + state.players[0] + '</th><th>' + state.players[1] + '</th></tr></thead><tbody>';
+                    let historyHtml = '<div class="final-table"><tr><thead><tr><th>Вопрос</th><th>' + state.players[0] + '</th><th>' + state.players[1] + '</th></tr></thead><tbody>';
                     for (let q of state.history) {
                         let ans1 = q.answer1;
                         let ans2 = q.answer2;
@@ -153,7 +154,6 @@
                         };
                         optsDiv.appendChild(btn);
                     });
-                    // Если уже был ответ у этого игрока, подсветим его
                     if (state.player_answers && state.player_answers[myIdx] !== undefined && state.player_answers[myIdx] !== null) {
                         const btns = document.querySelectorAll('.option-btn');
                         const ans = state.player_answers[myIdx];
@@ -163,33 +163,35 @@
                         }
                     }
                 }
-                // Обновляем таймер
                 document.getElementById('timer').innerText = `⏱️ ${state.time_left}`;
                 if (state.time_left <= 0) {
                     document.getElementById('timer').innerText = '⏰ 0';
                     roundActive = false;
                 }
             } else {
-                // Неактивный раунд – показываем результаты, если есть
+                // Неактивный раунд – показываем результаты, если есть и ещё не показывали
                 if (state.round_results && !state.round_active) {
-                    const res = state.round_results;
-                    const messagesHtml = res.messages.map(msg => {
-                        if (msg.includes('правильно')) return `<div>✅ ${msg}</div>`;
-                        else return `<div>❌ ${msg}</div>`;
-                    }).join('');
-                    const scoreHtml = `<div>Промежуточный счёт: ${res.scores[0]} : ${res.scores[1]}</div>`;
-                    const modal = document.getElementById('resultModal');
-                    document.getElementById('modalResults').innerHTML = messagesHtml + scoreHtml;
-                    document.getElementById('modalCorrect').innerHTML = `✅ Правильный ответ: ${res.correct_text}`;
-                    modal.classList.add('visible');
-                    setTimeout(() => modal.classList.remove('visible'), 4000);
+                    const roundId = state.q_idx;
+                    if (lastRoundId !== roundId) {
+                        lastRoundId = roundId;
+                        const res = state.round_results;
+                        const messagesHtml = res.messages.map(msg => {
+                            if (msg.includes('правильно')) return `<div>✅ ${msg}</div>`;
+                            else return `<div>❌ ${msg}</div>`;
+                        }).join('');
+                        const scoreHtml = `<div>Промежуточный счёт: ${res.scores[0]} : ${res.scores[1]}</div>`;
+                        const modal = document.getElementById('resultModal');
+                        document.getElementById('modalResults').innerHTML = messagesHtml + scoreHtml;
+                        document.getElementById('modalCorrect').innerHTML = `✅ Правильный ответ: ${res.correct_text}`;
+                        modal.classList.add('visible');
+                        setTimeout(() => modal.classList.remove('visible'), 4000);
+                    }
                 }
                 if (!state.round_active && !state.game_over) {
                     document.getElementById('question').innerText = "Раунд завершён. Следующий вопрос через несколько секунд...";
                     document.getElementById('options').innerHTML = '';
                     roundActive = false;
                 }
-                // Если игра ещё не началась
                 if (!state.round_active && !state.game_over && state.q_idx === 0 && !state.round_results) {
                     document.getElementById('question').innerText = "Ожидание начала игры...";
                 }
@@ -197,7 +199,7 @@
         } catch(e) { console.error(e); }
     }
 
-    pollInterval = setInterval(fetchState, 200);
+    pollInterval = setInterval(fetchState, 500);
     fetchState();
 </script>
 </body>

@@ -237,14 +237,19 @@ def join():
 @app.route('/wait')
 def wait():
     room = session.get('room')
-    if not room:
+    if not room or room not in games:
         return redirect(url_for('index'))
-    game = load_game(room)
-    if not game:
-        return redirect(url_for('index'))
-    if len(game['players']) == 2:
+    if len(games[room]['players']) == 2:
         return redirect(url_for('game'))
-    return render_template('wait.html', room=room, name=session.get('name', ''))
+    
+    # Генерируем пригласительную ссылку (текущий домен + параметр room)
+    base_url = request.url_root.rstrip('/')
+    invite_link = f"{base_url}/?room={room}"
+    
+    return render_template('wait.html', 
+                           room=room, 
+                           name=session.get('name', ''), 
+                           invite_link=invite_link)
 
 @app.route('/game')
 def game():

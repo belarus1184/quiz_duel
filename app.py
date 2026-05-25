@@ -35,18 +35,13 @@ def load_questions():
 QUESTIONS = load_questions()
 ROUND_TIME = 25
 PAUSE_TIME = 5
-WIN_SCORE = 5   # игра до 5 очков
 
 def start_round(room):
     game = games[room]
-    # Проверяем, не достиг ли кто-то победы (на случай, если раунд запустился после завершения)
-    if game['scores'][0] >= WIN_SCORE or game['scores'][1] >= WIN_SCORE:
+    q_idx = game['q_idx']
+    if q_idx >= len(QUESTIONS):
         end_game(room)
         return
-    q_idx = game['current_q_index']
-    if q_idx >= len(QUESTIONS):
-        q_idx = 0
-        game['current_q_index'] = 0
     q = QUESTIONS[q_idx]
     game['current_question'] = q
     game['correct'] = q['correct']
@@ -74,7 +69,6 @@ def finish_round(room):
         if ans == correct:
             new_scores[i] += 1
     game['scores'] = new_scores
-    # Сохраняем историю
     if 'history' not in game:
         game['history'] = []
     game['history'].append({
@@ -96,18 +90,11 @@ def finish_round(room):
         'correct_text': game['current_question']['options'][correct],
         'scores': new_scores
     }
-    # Проверяем, достиг ли кто-то 5 очков
-    if new_scores[0] >= WIN_SCORE or new_scores[1] >= WIN_SCORE:
-        end_game(room)
-        return
-    # Переход к следующему вопросу
     def next_round():
         time.sleep(PAUSE_TIME)
         if room in games:
             game = games[room]
-            game['current_q_index'] += 1
-            if game['current_q_index'] >= len(QUESTIONS):
-                game['current_q_index'] = 0
+            game['q_idx'] += 1
             game['round_finished'] = False
             game['round_results'] = None
             start_round(room)
@@ -166,7 +153,7 @@ def create():
         'players': [sid],
         'names': [name, None],
         'scores': [0, 0],
-        'current_q_index': 0,
+        'q_idx': 0,
         'round_active': False,
         'round_finished': False,
         'round_results': None,
@@ -246,7 +233,7 @@ def state():
         'scores': game['scores'],
         'round_active': game['round_active'],
         'round_finished': game.get('round_finished', False),
-        'q_idx': game.get('current_q_index', 0),
+        'q_idx': game['q_idx'],
         'total_questions': len(QUESTIONS),
         'game_over': game.get('game_over', False),
         'winner': game.get('winner'),
@@ -285,6 +272,7 @@ def answer():
     if not game.get('round_active'):
         return jsonify({'error': 'round not active'}), 400
     player_idx = 0 if game['players'][0] == sid else 1
+    # Разрешаем менять ответ в любое время – просто перезаписываем
     game['player_answers'][player_idx] = answer_idx
     if not game['answered'][player_idx]:
         game['answered'][player_idx] = True

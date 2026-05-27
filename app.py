@@ -13,11 +13,14 @@ app.secret_key = 'sse_secret'
 games = {}
 
 # ==================== НАСТРОЙКА GEMINI ====================
-GEMINI_API_KEY = "AIzaSyA6BZuLoLqNys5xpRAtbG5I698SL5UAt3U"  # замените на ваш ключ
+GEMINI_API_KEY = "AIzaSyA6BZuLoLqNys5xpRAtbG5I698SL5UAt3U"  # ВСТАВЬТЕ ВАШ РЕАЛЬНЫЙ КЛЮЧ
 
 def generate_questions_pool():
-    """Генерирует 30 вопросов через Gemini API. При ошибке возвращает резервный список."""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    """
+    Запрашивает у Gemini 30 вопросов за один запрос.
+    Возвращает список словарей с вопросами или резервный список при ошибке.
+    """
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
     prompt = (
         "Сгенерируй 30 разнообразных интересных вопросов для викторины. Каждый вопрос должен иметь 4 варианта ответов. "
         "Верни ответ строго в формате JSON: массив из 30 объектов, каждый объект имеет поля:\n"
@@ -40,11 +43,17 @@ def generate_questions_pool():
             if start != -1 and end != 0:
                 questions = json.loads(ai_text[start:end])
                 if len(questions) >= 30:
+                    print(f"Gemini успешно сгенерировал {len(questions)} вопросов.")
                     return questions[:30]
+            else:
+                print("Не удалось извлечь JSON из ответа Gemini.")
+        else:
+            print(f"Gemini API вернул ошибку: {resp.status_code}, {resp.text[:200]}")
     except Exception as e:
-        print(f"Ошибка генерации вопросов через Gemini: {e}")
+        print(f"Исключение при запросе к Gemini: {e}")
 
-    # ========== РЕЗЕРВНЫЙ СПИСОК (30 простых вопросов) ==========
+    # ========== РЕЗЕРВНЫЙ СПИСОК (30 вопросов) ==========
+    print("Используется резервный список вопросов.")
     fallback = [
         {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
         {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1},
@@ -77,7 +86,7 @@ def generate_questions_pool():
         {"question": "Кто изобрёл радио?", "options": ["Попов", "Тесла", "Маркони", "Эдисон"], "correct": 0},
         {"question": "Какой самый высокий водопад в мире?", "options": ["Анхель", "Ниагарский", "Виктория", "Игуасу"], "correct": 0}
     ]
-    # Убедимся, что ровно 30 вопросов
+    # Дополняем до 30 (на случай, если резервный список короче)
     while len(fallback) < 30:
         fallback.extend(fallback)
     return fallback[:30]
@@ -245,10 +254,10 @@ def join():
     games[room]['names'][1] = name
 
     if len(games[room]['players']) == 2:
-        # Генерируем 30 вопросов (если Gemini не ответит, берётся резервный список)
-        pool = generate_questions_pool()
-        games[room]['questions_pool'] = pool
-        print(f"Сгенерировано {len(pool)} вопросов для комнаты {room}")
+        # Генерируем 30 вопросов перед началом игры
+        questions_pool = generate_questions_pool()
+        games[room]['questions_pool'] = questions_pool
+        print(f"Сгенерировано {len(questions_pool)} вопросов для комнаты {room}")
         def start():
             time.sleep(2)
             if room in games:

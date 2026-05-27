@@ -3,46 +3,74 @@ import uuid
 import time
 import threading
 import json
-import random
 import os
+from mistralai import Mistral
 
 app = Flask(__name__)
 app.secret_key = 'sse_secret'
 
 games = {}
 
-def load_questions():
-    if not os.path.exists('questions.json'):
-        return [
-            {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
-            {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
-        ]
-    for encoding in ['utf-8', 'cp1251', 'latin-1']:
-        try:
-            with open('questions.json', 'r', encoding=encoding) as f:
-                qlist = json.load(f)
-                #random.shuffle(qlist)
-                print(f"Вопросы загружены (кодировка {encoding})")
-                return qlist
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            continue
-    print("Не удалось загрузить questions.json, использую резервный список")
-    return [
-        {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
-        {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
-    ]
+# ==================== НАСТРОЙКА MISTRAL ====================
+MISTRAL_API_KEY = "hL9pQpCgVBExEc0WoovDAJh73Y8S3w3w"  # 🔴 ВСТАВЬТЕ СВОЙ КЛЮЧ
 
-QUESTIONS = load_questions()
+def generate_30_questions():
+    """Генерирует 30 вопросов через Mistral API (бесплатный тариф)."""
+    client = Mistral(api_key=MISTRAL_API_KEY)
+    prompt = (
+        "Ты — генератор увлекательных вопросов для интеллектуальной викторины-дуэли.\n"
+        "Сгенерируй 30 разнообразных интересных вопросов с 4 вариантами ответов.\n"
+        "Вопросы должны быть на русском языке, охватывать разные темы (наука, искусство, спорт, история, литература, IT, путешествия, кино, игры, еда, животные и т.д.).\n"
+        "Твой ответ должен быть строго в формате JSON: массив из 30 объектов.\n"
+        "Каждый объект: {\"question\": \"текст вопроса\", \"options\": [\"вар1\", \"вар2\", \"вар3\", \"вар4\"], \"correct\": индекс_правильного_ответа (0-3)}.\n"
+        "Пример: [{\"question\": \"Столица Франции?\", \"options\": [\"Лондон\", \"Берлин\", \"Париж\", \"Мадрид\"], \"correct\": 2}]\n"
+        "Не добавляй пояснений, только JSON массив."
+    )
+    try:
+        chat_response = client.chat.complete(
+            model="mistral-small-latest",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=4000
+        )
+        ai_text = chat_response.choices[0].message.content
+        # Извлекаем JSON из ответа (на случай, если модель добавила пояснения)
+        start = ai_text.find('[')
+        end = ai_text.rfind(']') + 1
+        if start != -1 and end != 0:
+            questions = json.loads(ai_text[start:end])
+            if len(questions) >= 30:
+                print("Успешно сгенерировано 30 вопросов через Mistral")
+                return questions[:30]
+            else:
+                print(f"Mistral вернул недостаточно вопросов: {len(questions)}")
+        else:
+            print("Не удалось извлечь JSON из ответа Mistral")
+    except Exception as e:
+        print(f"Ошибка генерации вопросов через Mistral: {e}")
+
+    # Резервный список (30 простых вопросов) – на случай полного сбоя
+    fallback = [
+        {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
+        {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1},
+        # ... при необходимости добавьте остальные
+    ]
+    while len(fallback) < 30:
+        fallback.extend(fallback)
+    print("Используется резервный список вопросов (Mistral недоступен).")
+    return fallback[:30]
+
+# ==================== ИГРОВАЯ ЛОГИКА ====================
 ROUND_TIME = 25
 PAUSE_TIME = 5
 
 def start_round(room):
     game = games[room]
     q_idx = game['q_idx']
-    if q_idx >= len(QUESTIONS):
+    if q_idx >= len(game['questions_pool']):
         end_game(room)
         return
-    q = QUESTIONS[q_idx]
+    q = game['questions_pool'][q_idx]
     game['current_question'] = q
     game['correct'] = q['correct']
     game['round_active'] = True
@@ -135,6 +163,7 @@ def end_game(room):
             del games[room]
     threading.Thread(target=clean, daemon=True).start()
 
+# ==================== МАРШРУТЫ ====================
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -163,7 +192,8 @@ def create():
         'player_answers': [None, None],
         'round_start_time': 0,
         'history': [],
-        'game_over': False
+        'game_over': False,
+        'questions_pool': None
     }
     return redirect(url_for('wait'))
 
@@ -182,6 +212,10 @@ def join():
     games[room]['players'].append(sid)
     games[room]['names'][1] = name
     if len(games[room]['players']) == 2:
+        # Генерируем 30 вопросов через Mistral
+        pool = generate_30_questions()
+        games[room]['questions_pool'] = pool
+        print(f"Сгенерировано {len(pool)} вопросов для комнаты {room}")
         def start():
             time.sleep(2)
             if room in games:
@@ -220,7 +254,8 @@ def game():
     names = games[room]['names']
     name1 = names[0] if names[0] else "Игрок 1"
     name2 = names[1] if names[1] else "Игрок 2"
-    return render_template('game.html', sid=sid, name=name, player_idx=player_idx, total_questions=len(QUESTIONS), name1=name1, name2=name2)
+    total = len(games[room].get('questions_pool', [])) if games[room].get('questions_pool') else 30
+    return render_template('game.html', sid=sid, name=name, player_idx=player_idx, total_questions=total, name1=name1, name2=name2)
 
 @app.route('/state')
 def state():
@@ -234,7 +269,7 @@ def state():
         'round_active': game['round_active'],
         'round_finished': game.get('round_finished', False),
         'q_idx': game['q_idx'],
-        'total_questions': len(QUESTIONS),
+        'total_questions': len(game.get('questions_pool', [])),
         'game_over': game.get('game_over', False),
         'winner': game.get('winner'),
         'winner_score': game.get('winner_score'),
@@ -272,7 +307,6 @@ def answer():
     if not game.get('round_active'):
         return jsonify({'error': 'round not active'}), 400
     player_idx = 0 if game['players'][0] == sid else 1
-    # Разрешаем менять ответ в любое время – просто перезаписываем
     game['player_answers'][player_idx] = answer_idx
     if not game['answered'][player_idx]:
         game['answered'][player_idx] = True
@@ -280,4 +314,3 @@ def answer():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
-

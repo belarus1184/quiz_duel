@@ -3,20 +3,21 @@ import uuid
 import time
 import threading
 import json
+import random
 import os
-from mistralai import Mistral
+import requests
 
 app = Flask(__name__)
 app.secret_key = 'sse_secret'
 
 games = {}
 
-# ==================== НАСТРОЙКА MISTRAL ====================
-MISTRAL_API_KEY = "hL9pQpCgVBExEc0WoovDAJh73Y8S3w3w"  # 🔴 ВСТАВЬТЕ СВОЙ КЛЮЧ
+# ==================== НАСТРОЙКА MISTRAL API ====================
+MISTRAL_API_KEY = "ваш_ключ_api_mistral"  # 🔴 ВСТАВЬТЕ ВАШ КЛЮЧ
+MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 
 def generate_30_questions():
-    """Генерирует 30 вопросов через Mistral API (бесплатный тариф)."""
-    client = Mistral(api_key=MISTRAL_API_KEY)
+    """Генерирует 30 вопросов через Mistral API (прямой HTTP-запрос)"""
     prompt = (
         "Ты — генератор увлекательных вопросов для интеллектуальной викторины-дуэли.\n"
         "Сгенерируй 30 разнообразных интересных вопросов с 4 вариантами ответов.\n"
@@ -26,41 +27,50 @@ def generate_30_questions():
         "Пример: [{\"question\": \"Столица Франции?\", \"options\": [\"Лондон\", \"Берлин\", \"Париж\", \"Мадрид\"], \"correct\": 2}]\n"
         "Не добавляй пояснений, только JSON массив."
     )
+    headers = {
+        "Authorization": f"Bearer {MISTRAL_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "mistral-small-latest",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.7,
+        "max_tokens": 4000
+    }
     try:
-        chat_response = client.chat.complete(
-            model="mistral-small-latest",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=4000
-        )
-        ai_text = chat_response.choices[0].message.content
-        # Извлекаем JSON из ответа (на случай, если модель добавила пояснения)
-        start = ai_text.find('[')
-        end = ai_text.rfind(']') + 1
-        if start != -1 and end != 0:
-            questions = json.loads(ai_text[start:end])
-            if len(questions) >= 30:
-                print("Успешно сгенерировано 30 вопросов через Mistral")
-                return questions[:30]
+        resp = requests.post(MISTRAL_URL, headers=headers, json=payload, timeout=60)
+        if resp.status_code == 200:
+            data = resp.json()
+            ai_text = data['choices'][0]['message']['content']
+            # Извлекаем JSON из ответа
+            start = ai_text.find('[')
+            end = ai_text.rfind(']') + 1
+            if start != -1 and end != 0:
+                questions = json.loads(ai_text[start:end])
+                if len(questions) >= 30:
+                    print("✅ Сгенерировано 30 вопросов через Mistral")
+                    return questions[:30]
+                else:
+                    print(f"⚠️ Mistral вернул недостаточно вопросов: {len(questions)}")
             else:
-                print(f"Mistral вернул недостаточно вопросов: {len(questions)}")
+                print("⚠️ Не удалось извлечь JSON из ответа Mistral")
         else:
-            print("Не удалось извлечь JSON из ответа Mistral")
+            print(f"❌ Ошибка Mistral: {resp.status_code}, {resp.text[:200]}")
     except Exception as e:
-        print(f"Ошибка генерации вопросов через Mistral: {e}")
+        print(f"❌ Ошибка запроса к Mistral: {e}")
 
     # Резервный список (30 простых вопросов) – на случай полного сбоя
     fallback = [
         {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
         {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1},
-        # ... при необходимости добавьте остальные
+        # ... добавьте остальные вопросы, если нужно
     ]
     while len(fallback) < 30:
-        fallback.extend(fallback)
-    print("Используется резервный список вопросов (Mistral недоступен).")
+        fallback.append(fallback[0])
+    print("🔄 Используется резервный список вопросов")
     return fallback[:30]
 
-# ==================== ИГРОВАЯ ЛОГИКА ====================
+# ==================== ОСТАЛЬНОЙ КОД (игровая логика) – без изменений ====================
 ROUND_TIME = 25
 PAUSE_TIME = 5
 

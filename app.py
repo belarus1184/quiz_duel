@@ -17,15 +17,19 @@ MISTRAL_API_KEY = "hL9pQpCgVBExEc0WoovDAJh73Y8S3w3w"  # 🔴 ВСТАВЬТЕ В
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 
 def generate_30_questions():
-    """Генерирует 30 вопросов через Mistral API (прямой HTTP-запрос)"""
+    """Генерирует 30 вопросов через Mistral API с уникальным seed для каждой игры"""
+    # Генерируем случайный seed (от 1 до 1 млн) и добавляем временную метку в промпт
+    random_seed = random.randint(1, 1000000)
+    timestamp = int(time.time())
+    
     prompt = (
-        "Ты — генератор увлекательных вопросов для интеллектуальной викторины-дуэли.\n"
+        f"Ты — генератор увлекательных вопросов для интеллектуальной викторины-дуэли. Номер запроса: {timestamp}.\n"
         "Сгенерируй 30 разнообразных интересных вопросов с 4 вариантами ответов.\n"
-        "Вопросы должны быть на русском языке, охватывать разные темы (наука, искусство, спорт, история, литература, IT, путешествия, кино, игры, еда, животные и другие интересные темы на ваше усмотрение).\n"
+        "Вопросы должны быть на русском языке, охватывать разные темы (наука, искусство, спорт, история, литература, IT, путешествия, кино, игры, еда, животные и т.д.).\n"
         "Твой ответ должен быть строго в формате JSON: массив из 30 объектов.\n"
         "Каждый объект: {\"question\": \"текст вопроса\", \"options\": [\"вар1\", \"вар2\", \"вар3\", \"вар4\"], \"correct\": индекс_правильного_ответа (0-3)}.\n"
         "Пример: [{\"question\": \"Столица Франции?\", \"options\": [\"Лондон\", \"Берлин\", \"Париж\", \"Мадрид\"], \"correct\": 2}]\n"
-        "Не добавляй пояснений, только JSON массив."
+        "Не добавляй пояснений, только JSON массив. Старайся не повторять вопросы из прошлых игр."
     )
     headers = {
         "Authorization": f"Bearer {MISTRAL_API_KEY}",
@@ -34,21 +38,21 @@ def generate_30_questions():
     payload = {
         "model": "mistral-small-latest",
         "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.7,
-        "max_tokens": 4000
+        "temperature": 0.95,           # повышаем для большей случайности
+        "max_tokens": 4000,
+        "random_seed": random_seed     # важный параметр!
     }
     try:
         resp = requests.post(MISTRAL_URL, headers=headers, json=payload, timeout=60)
         if resp.status_code == 200:
             data = resp.json()
             ai_text = data['choices'][0]['message']['content']
-            # Извлекаем JSON из ответа
             start = ai_text.find('[')
             end = ai_text.rfind(']') + 1
             if start != -1 and end != 0:
                 questions = json.loads(ai_text[start:end])
                 if len(questions) >= 30:
-                    print("✅ Сгенерировано 30 вопросов через Mistral")
+                    print(f"✅ Сгенерировано {len(questions)} вопросов (seed={random_seed})")
                     return questions[:30]
                 else:
                     print(f"⚠️ Mistral вернул недостаточно вопросов: {len(questions)}")
@@ -59,14 +63,13 @@ def generate_30_questions():
     except Exception as e:
         print(f"❌ Ошибка запроса к Mistral: {e}")
 
-    # Резервный список (30 простых вопросов) – на случай полного сбоя
+    # Резервный список (на случай сбоя)
     fallback = [
         {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
         {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1},
-        # ... добавьте остальные вопросы, если нужно
     ]
     while len(fallback) < 30:
-        fallback.append(fallback[0])
+        fallback.extend(fallback)
     print("🔄 Используется резервный список вопросов")
     return fallback[:30]
 

@@ -5,81 +5,44 @@ import threading
 import json
 import random
 import os
-import requests
 
 app = Flask(__name__)
 app.secret_key = 'sse_secret'
 
 games = {}
 
-# ==================== НАСТРОЙКА OPENROUTER ====================
-OPENROUTER_API_KEY = "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"  # ВСТАВЬТЕ ВАШ КЛЮЧ
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-
-def generate_30_questions():
-    """Генерирует 30 вопросов через OpenRouter (модель gpt-3.5-turbo)."""
-    prompt = (
-        "Ты — генератор увлекательных вопросов для интеллектуальной викторины-дуэли.\n"
-        "Сгенерируй 30 разнообразных интересных вопросов с 4 вариантами ответов.\n"
-        "Вопросы должны быть на русском языке, охватывать разные темы (наука, искусство, спорт, история, литература, IT, путешествия, кино, игры, еда, животные и т.д.).\n"
-        "Твой ответ должен быть строго в формате JSON: массив из 30 объектов.\n"
-        "Каждый объект: {\"question\": \"текст вопроса\", \"options\": [\"вар1\", \"вар2\", \"вар3\", \"вар4\"], \"correct\": индекс_правильного_ответа (0-3)}.\n"
-        "Пример: [{\"question\": \"Столица Франции?\", \"options\": [\"Лондон\", \"Берлин\", \"Париж\", \"Мадрид\"], \"correct\": 2}]\n"
-        "Не добавляй пояснений, только JSON массив."
-    )
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": "openai/gpt-3.5-turbo",
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.7,
-        "max_tokens": 4000
-    }
-    try:
-        resp = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=60)
-        if resp.status_code == 200:
-            data = resp.json()
-            ai_text = data['choices'][0]['message']['content']
-            start = ai_text.find('[')
-            end = ai_text.rfind(']') + 1
-            if start != -1 and end != 0:
-                questions = json.loads(ai_text[start:end])
-                if len(questions) >= 30:
-                    print("Успешно сгенерировано 30 вопросов через OpenRouter (GPT-3.5)")
-                    return questions[:30]
-                else:
-                    print(f"OpenRouter вернул недостаточно вопросов: {len(questions)}")
-            else:
-                print("Не удалось извлечь JSON из ответа OpenRouter")
-        else:
-            print(f"Ошибка OpenRouter: {resp.status_code}, {resp.text[:200]}")
-    except Exception as e:
-        print(f"Ошибка при запросе к OpenRouter: {e}")
-
-    # Резервный список (30 простых вопросов) – на случай полного сбоя
-    fallback = [
+def load_questions():
+    if not os.path.exists('questions.json'):
+        return [
+            {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
+            {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
+        ]
+    for encoding in ['utf-8', 'cp1251', 'latin-1']:
+        try:
+            with open('questions.json', 'r', encoding=encoding) as f:
+                qlist = json.load(f)
+                #random.shuffle(qlist)
+                print(f"Вопросы загружены (кодировка {encoding})")
+                return qlist
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+    print("Не удалось загрузить questions.json, использую резервный список")
+    return [
         {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
-        {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1},
-        # ... добавьте остальные 28 вопросов из вашего статического списка
+        {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
     ]
-    while len(fallback) < 30:
-        fallback.append(fallback[0])  # упрощённо дополняем
-    print("Используется резервный список вопросов (OpenRouter недоступен).")
-    return fallback[:30]
 
-# ==================== ИГРОВАЯ ЛОГИКА ====================
+QUESTIONS = load_questions()
 ROUND_TIME = 25
 PAUSE_TIME = 5
 
 def start_round(room):
     game = games[room]
     q_idx = game['q_idx']
-    if q_idx >= len(game['questions_pool']):
+    if q_idx >= len(QUESTIONS):
         end_game(room)
         return
-    q = game['questions_pool'][q_idx]
+    q = QUESTIONS[q_idx]
     game['current_question'] = q
     game['correct'] = q['correct']
     game['round_active'] = True
@@ -172,7 +135,6 @@ def end_game(room):
             del games[room]
     threading.Thread(target=clean, daemon=True).start()
 
-# ==================== МАРШРУТЫ ====================
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -201,8 +163,7 @@ def create():
         'player_answers': [None, None],
         'round_start_time': 0,
         'history': [],
-        'game_over': False,
-        'questions_pool': None
+        'game_over': False
     }
     return redirect(url_for('wait'))
 
@@ -221,9 +182,6 @@ def join():
     games[room]['players'].append(sid)
     games[room]['names'][1] = name
     if len(games[room]['players']) == 2:
-        pool = generate_30_questions()
-        games[room]['questions_pool'] = pool
-        print(f"Сгенерировано {len(pool)} вопросов для комнаты {room}")
         def start():
             time.sleep(2)
             if room in games:
@@ -262,8 +220,7 @@ def game():
     names = games[room]['names']
     name1 = names[0] if names[0] else "Игрок 1"
     name2 = names[1] if names[1] else "Игрок 2"
-    total = len(games[room].get('questions_pool', [])) if games[room].get('questions_pool') else 30
-    return render_template('game.html', sid=sid, name=name, player_idx=player_idx, total_questions=total, name1=name1, name2=name2)
+    return render_template('game.html', sid=sid, name=name, player_idx=player_idx, total_questions=len(QUESTIONS), name1=name1, name2=name2)
 
 @app.route('/state')
 def state():
@@ -277,7 +234,7 @@ def state():
         'round_active': game['round_active'],
         'round_finished': game.get('round_finished', False),
         'q_idx': game['q_idx'],
-        'total_questions': len(game.get('questions_pool', [])),
+        'total_questions': len(QUESTIONS),
         'game_over': game.get('game_over', False),
         'winner': game.get('winner'),
         'winner_score': game.get('winner_score'),
@@ -315,6 +272,7 @@ def answer():
     if not game.get('round_active'):
         return jsonify({'error': 'round not active'}), 400
     player_idx = 0 if game['players'][0] == sid else 1
+    # Разрешаем менять ответ в любое время – просто перезаписываем
     game['player_answers'][player_idx] = answer_idx
     if not game['answered'][player_idx]:
         game['answered'][player_idx] = True
@@ -322,3 +280,4 @@ def answer():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
+

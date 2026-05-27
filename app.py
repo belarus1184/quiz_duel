@@ -16,7 +16,7 @@ games = {}
 GEMINI_API_KEY = "AIzaSyA6BZuLoLqNys5xpRAtbG5I698SL5UAt3U"  # замените на ваш ключ
 
 def generate_questions_pool():
-    """Генерирует 30 вопросов через Gemini API. Возвращает список вопросов (каждый: dict с 'question', 'options', 'correct')."""
+    """Генерирует 30 вопросов через Gemini API. При ошибке возвращает резервный список."""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     prompt = (
         "Сгенерируй 30 разнообразных интересных вопросов для викторины. Каждый вопрос должен иметь 4 варианта ответов. "
@@ -35,17 +35,16 @@ def generate_questions_pool():
         if resp.status_code == 200:
             data = resp.json()
             ai_text = data['candidates'][0]['content']['parts'][0]['text']
-            # Извлекаем JSON из ответа (на случай, если модель добавила пояснения)
             start = ai_text.find('[')
             end = ai_text.rfind(']') + 1
             if start != -1 and end != 0:
                 questions = json.loads(ai_text[start:end])
                 if len(questions) >= 30:
-                    return questions[:30]   # берём первые 30
+                    return questions[:30]
     except Exception as e:
         print(f"Ошибка генерации вопросов через Gemini: {e}")
 
-    # Резервный список (30 простых вопросов) – на случай сбоя API
+    # ========== РЕЗЕРВНЫЙ СПИСОК (30 простых вопросов) ==========
     fallback = [
         {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
         {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1},
@@ -62,9 +61,23 @@ def generate_questions_pool():
         {"question": "Какой химический элемент обозначается символом O?", "options": ["Золото", "Кислород", "Осмий", "Олово"], "correct": 1},
         {"question": "Что такое алгоритм в информатике?", "options": ["Программа", "Последовательность действий", "Ошибка в коде", "Тип данных"], "correct": 1},
         {"question": "Какой вид спорта называют «королевой спорта»?", "options": ["Футбол", "Лёгкая атлетика", "Теннис", "Баскетбол"], "correct": 1},
-        # Дополним до 30 (повторяем первые несколько, чтобы было 30)
+        {"question": "Какой город является столицей Великобритании?", "options": ["Париж", "Лондон", "Берлин", "Мадрид"], "correct": 1},
+        {"question": "Какой материк самый большой?", "options": ["Африка", "Евразия", "Северная Америка", "Австралия"], "correct": 1},
+        {"question": "Какой цвет получается при смешивании жёлтого и синего?", "options": ["Красный", "Зелёный", "Фиолетовый", "Оранжевый"], "correct": 1},
+        {"question": "Кто автор картины «Последний день Помпеи»?", "options": ["Брюллов", "Репин", "Суриков", "Васнецов"], "correct": 0},
+        {"question": "Какая страна подарила миру джаз?", "options": ["Англия", "Франция", "США", "Италия"], "correct": 2},
+        {"question": "Какой элемент таблицы Менделеева имеет символ H?", "options": ["Гелий", "Водород", "Кислород", "Углерод"], "correct": 1},
+        {"question": "Кто снял фильм «Титаник»?", "options": ["Стивен Спилберг", "Джеймс Кэмерон", "Кристофер Нолан", "Питер Джексон"], "correct": 1},
+        {"question": "Какой год считается началом Второй мировой войны?", "options": ["1939", "1941", "1914", "1945"], "correct": 0},
+        {"question": "Кто написал музыку к балету «Щелкунчик»?", "options": ["Чайковский", "Прокофьев", "Шостакович", "Стравинский"], "correct": 0},
+        {"question": "Какой химический элемент является жидкостью при комнатной температуре?", "options": ["Ртуть", "Бром", "Галлий", "Цезий"], "correct": 0},
+        {"question": "Какой океан омывает западное побережье США?", "options": ["Атлантический", "Тихий", "Индийский", "Северный Ледовитый"], "correct": 1},
+        {"question": "Какой из этих городов находится в Австралии?", "options": ["Окленд", "Сидней", "Джакарта", "Сингапур"], "correct": 1},
+        {"question": "Какой танец считается национальным в Аргентине?", "options": ["Сальса", "Танго", "Фламенко", "Самба"], "correct": 1},
+        {"question": "Кто изобрёл радио?", "options": ["Попов", "Тесла", "Маркони", "Эдисон"], "correct": 0},
+        {"question": "Какой самый высокий водопад в мире?", "options": ["Анхель", "Ниагарский", "Виктория", "Игуасу"], "correct": 0}
     ]
-    # Если недостаточно, дополняем повторами
+    # Убедимся, что ровно 30 вопросов
     while len(fallback) < 30:
         fallback.extend(fallback)
     return fallback[:30]
@@ -76,10 +89,11 @@ PAUSE_TIME = 5
 def start_round(room):
     game = games[room]
     q_idx = game['q_idx']
-    if q_idx >= len(game['questions_pool']):
+    pool = game.get('questions_pool')
+    if not pool or q_idx >= len(pool):
         end_game(room)
         return
-    q = game['questions_pool'][q_idx]
+    q = pool[q_idx]
     game['current_question'] = q
     game['correct'] = q['correct']
     game['round_active'] = True
@@ -211,7 +225,7 @@ def create():
         'round_start_time': 0,
         'history': [],
         'game_over': False,
-        'questions_pool': None   # будет заполнено позже
+        'questions_pool': None
     }
     return redirect(url_for('wait'))
 
@@ -231,9 +245,10 @@ def join():
     games[room]['names'][1] = name
 
     if len(games[room]['players']) == 2:
-        # Генерируем 30 вопросов при старте игры
+        # Генерируем 30 вопросов (если Gemini не ответит, берётся резервный список)
         pool = generate_questions_pool()
         games[room]['questions_pool'] = pool
+        print(f"Сгенерировано {len(pool)} вопросов для комнаты {room}")
         def start():
             time.sleep(2)
             if room in games:
@@ -272,9 +287,7 @@ def game():
     names = games[room]['names']
     name1 = names[0] if names[0] else "Игрок 1"
     name2 = names[1] if names[1] else "Игрок 2"
-    # total_questions = количество вопросов (30), берём из пула если он уже есть
-    q_pool = games[room].get('questions_pool')
-    total = len(q_pool) if q_pool else 30
+    total = len(games[room].get('questions_pool', [])) if games[room].get('questions_pool') else 30
     return render_template('game.html', sid=sid, name=name, player_idx=player_idx, total_questions=total, name1=name1, name2=name2)
 
 @app.route('/state')

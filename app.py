@@ -13,7 +13,7 @@ app.secret_key = 'sse_secret'
 games = {}
 
 # ==================== НАСТРОЙКА MISTRAL API ====================
-MISTRAL_API_KEY = "ваш_ключ_api_mistral"  # 🔴 ВСТАВЬТЕ ВАШ КЛЮЧ
+MISTRAL_API_KEY = "hL9pQpCgVBExEc0WoovDAJh73Y8S3w3w"  # 🔴 ВСТАВЬТЕ ВАШ КЛЮЧ
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 
 def generate_30_questions():

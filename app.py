@@ -5,44 +5,81 @@ import threading
 import json
 import random
 import os
+import requests
 
 app = Flask(__name__)
 app.secret_key = 'sse_secret'
 
 games = {}
 
-def load_questions():
-    if not os.path.exists('questions.json'):
-        return [
-            {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
-            {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
-        ]
-    for encoding in ['utf-8', 'cp1251', 'latin-1']:
-        try:
-            with open('questions.json', 'r', encoding=encoding) as f:
-                qlist = json.load(f)
-                #random.shuffle(qlist)
-                print(f"Вопросы загружены (кодировка {encoding})")
-                return qlist
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            continue
-    print("Не удалось загрузить questions.json, использую резервный список")
-    return [
-        {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
-        {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
-    ]
+# ==================== НАСТРОЙКА GEMINI ====================
+GEMINI_API_KEY = "AIzaSyA6BZuLoLqNys5xpRAtbG5I698SL5UAt3U"  # замените на ваш ключ
 
-QUESTIONS = load_questions()
+def generate_questions_pool():
+    """Генерирует 30 вопросов через Gemini API. Возвращает список вопросов (каждый: dict с 'question', 'options', 'correct')."""
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    prompt = (
+        "Сгенерируй 30 разнообразных интересных вопросов для викторины. Каждый вопрос должен иметь 4 варианта ответов. "
+        "Верни ответ строго в формате JSON: массив из 30 объектов, каждый объект имеет поля:\n"
+        "{\"question\": \"текст вопроса\", \"options\": [\"вариант1\", \"вариант2\", \"вариант3\", \"вариант4\"], \"correct\": индекс_правильного_ответа (0-3)}.\n"
+        "Вопросы должны быть на русском языке, охватывать разные темы (история, наука, искусство, спорт, география, IT, кино, музыка и т.д.)."
+    )
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
+    headers = {'Content-Type': 'application/json'}
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=30)
+        if resp.status_code == 200:
+            data = resp.json()
+            ai_text = data['candidates'][0]['content']['parts'][0]['text']
+            # Извлекаем JSON из ответа (на случай, если модель добавила пояснения)
+            start = ai_text.find('[')
+            end = ai_text.rfind(']') + 1
+            if start != -1 and end != 0:
+                questions = json.loads(ai_text[start:end])
+                if len(questions) >= 30:
+                    return questions[:30]   # берём первые 30
+    except Exception as e:
+        print(f"Ошибка генерации вопросов через Gemini: {e}")
+
+    # Резервный список (30 простых вопросов) – на случай сбоя API
+    fallback = [
+        {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
+        {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1},
+        {"question": "Какой цвет получается при смешивании красного и синего?", "options": ["Зелёный", "Фиолетовый", "Оранжевый", "Розовый"], "correct": 1},
+        {"question": "Кто написал «Евгений Онегин»?", "options": ["Лермонтов", "Пушкин", "Толстой", "Достоевский"], "correct": 1},
+        {"question": "Какой океан самый большой?", "options": ["Атлантический", "Индийский", "Тихий", "Северный Ледовитый"], "correct": 2},
+        {"question": "Какая планета самая большая в Солнечной системе?", "options": ["Марс", "Юпитер", "Сатурн", "Нептун"], "correct": 1},
+        {"question": "Кто написал картину «Мона Лиза»?", "options": ["Ван Гог", "Пикассо", "Да Винчи", "Рафаэль"], "correct": 2},
+        {"question": "Какой газ мы вдыхаем?", "options": ["Кислород", "Углекислый газ", "Азот", "Водород"], "correct": 0},
+        {"question": "Какой прибор показывает время?", "options": ["Термометр", "Барометр", "Часы", "Спидометр"], "correct": 2},
+        {"question": "Сколько дней в неделе?", "options": ["5", "6", "7", "8"], "correct": 2},
+        {"question": "Кто был первым человеком в космосе?", "options": ["Нил Армстронг", "Юрий Гагарин", "Алексей Леонов", "Герман Титов"], "correct": 1},
+        {"question": "Как называется столица России?", "options": ["Санкт-Петербург", "Новосибирск", "Москва", "Казань"], "correct": 2},
+        {"question": "Какой химический элемент обозначается символом O?", "options": ["Золото", "Кислород", "Осмий", "Олово"], "correct": 1},
+        {"question": "Что такое алгоритм в информатике?", "options": ["Программа", "Последовательность действий", "Ошибка в коде", "Тип данных"], "correct": 1},
+        {"question": "Какой вид спорта называют «королевой спорта»?", "options": ["Футбол", "Лёгкая атлетика", "Теннис", "Баскетбол"], "correct": 1},
+        # Дополним до 30 (повторяем первые несколько, чтобы было 30)
+    ]
+    # Если недостаточно, дополняем повторами
+    while len(fallback) < 30:
+        fallback.extend(fallback)
+    return fallback[:30]
+
+# ==================== ИГРОВАЯ ЛОГИКА ====================
 ROUND_TIME = 25
 PAUSE_TIME = 5
 
 def start_round(room):
     game = games[room]
     q_idx = game['q_idx']
-    if q_idx >= len(QUESTIONS):
+    if q_idx >= len(game['questions_pool']):
         end_game(room)
         return
-    q = QUESTIONS[q_idx]
+    q = game['questions_pool'][q_idx]
     game['current_question'] = q
     game['correct'] = q['correct']
     game['round_active'] = True
@@ -50,6 +87,7 @@ def start_round(room):
     game['player_answers'] = [None, None]
     game['round_start_time'] = time.time()
     game['round_finished'] = False
+
     def timer():
         time.sleep(ROUND_TIME)
         if room in games and games[room].get('round_active'):
@@ -62,6 +100,7 @@ def finish_round(room):
         return
     game['round_active'] = False
     game['round_finished'] = True
+
     correct = game['correct']
     answers = game['player_answers']
     new_scores = game['scores'][:]
@@ -69,6 +108,7 @@ def finish_round(room):
         if ans == correct:
             new_scores[i] += 1
     game['scores'] = new_scores
+
     if 'history' not in game:
         game['history'] = []
     game['history'].append({
@@ -76,6 +116,7 @@ def finish_round(room):
         'answers': answers.copy(),
         'correct': correct
     })
+
     names = game['names']
     messages = []
     for i, ans in enumerate(answers):
@@ -85,11 +126,13 @@ def finish_round(room):
             messages.append(f"{names[i]} ответил неправильно")
         else:
             messages.append(f"{names[i]} не ответил")
+
     game['round_results'] = {
         'messages': messages,
         'correct_text': game['current_question']['options'][correct],
         'scores': new_scores
     }
+
     def next_round():
         time.sleep(PAUSE_TIME)
         if room in games:
@@ -116,6 +159,7 @@ def end_game(room):
         winner = None
         winner_score = scores[0]
         loser_score = scores[1]
+
     history_table = []
     for h in game.get('history', []):
         history_table.append({
@@ -124,17 +168,20 @@ def end_game(room):
             'answer2': h['answers'][1],
             'correct': h['correct']
         })
+
     game['game_over'] = True
     game['winner'] = winner
     game['winner_score'] = winner_score
     game['loser_score'] = loser_score
     game['history_table'] = history_table
+
     def clean():
         time.sleep(10)
         if room in games:
             del games[room]
     threading.Thread(target=clean, daemon=True).start()
 
+# ==================== МАРШРУТЫ ====================
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -163,7 +210,8 @@ def create():
         'player_answers': [None, None],
         'round_start_time': 0,
         'history': [],
-        'game_over': False
+        'game_over': False,
+        'questions_pool': None   # будет заполнено позже
     }
     return redirect(url_for('wait'))
 
@@ -181,7 +229,11 @@ def join():
     session['name'] = name
     games[room]['players'].append(sid)
     games[room]['names'][1] = name
+
     if len(games[room]['players']) == 2:
+        # Генерируем 30 вопросов при старте игры
+        pool = generate_questions_pool()
+        games[room]['questions_pool'] = pool
         def start():
             time.sleep(2)
             if room in games:
@@ -220,7 +272,10 @@ def game():
     names = games[room]['names']
     name1 = names[0] if names[0] else "Игрок 1"
     name2 = names[1] if names[1] else "Игрок 2"
-    return render_template('game.html', sid=sid, name=name, player_idx=player_idx, total_questions=len(QUESTIONS), name1=name1, name2=name2)
+    # total_questions = количество вопросов (30), берём из пула если он уже есть
+    q_pool = games[room].get('questions_pool')
+    total = len(q_pool) if q_pool else 30
+    return render_template('game.html', sid=sid, name=name, player_idx=player_idx, total_questions=total, name1=name1, name2=name2)
 
 @app.route('/state')
 def state():
@@ -234,7 +289,7 @@ def state():
         'round_active': game['round_active'],
         'round_finished': game.get('round_finished', False),
         'q_idx': game['q_idx'],
-        'total_questions': len(QUESTIONS),
+        'total_questions': len(game.get('questions_pool', [])),
         'game_over': game.get('game_over', False),
         'winner': game.get('winner'),
         'winner_score': game.get('winner_score'),
@@ -272,7 +327,6 @@ def answer():
     if not game.get('round_active'):
         return jsonify({'error': 'round not active'}), 400
     player_idx = 0 if game['players'][0] == sid else 1
-    # Разрешаем менять ответ в любое время – просто перезаписываем
     game['player_answers'][player_idx] = answer_idx
     if not game['answered'][player_idx]:
         game['answered'][player_idx] = True

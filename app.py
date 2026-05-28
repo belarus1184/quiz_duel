@@ -38,7 +38,7 @@ def generate_30_questions():
     payload = {
         "model": "mistral-small-latest",
         "messages": [{"role": "user", "content": prompt}],
-        "temperature": 100,           # повышаем для большей случайности
+        "temperature": 0.95,           # повышаем для большей случайности
         "max_tokens": 4000,
         "random_seed": random_seed     # важный параметр!
     }

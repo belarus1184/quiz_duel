@@ -10,34 +10,48 @@ app = Flask(__name__)
 app.secret_key = 'sse_secret'
 
 games = {}
+file_lock = threading.Lock()  # для синхронизации записи в questions.json
 
+# ==================== ЗАГРУЗКА ВОПРОСОВ ИЗ ФАЙЛА ====================
 def load_all_questions():
     """Загружает все вопросы из questions.json"""
     if not os.path.exists('questions.json'):
+        # Резервный список на случай отсутствия файла
+        return [
+            {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
+            {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
+        ]
+    try:
+        with open('questions.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Ошибка загрузки questions.json: {e}")
         return []
-    with open('questions.json', 'r', encoding='utf-8') as f:
-        return json.load(f)
 
 def save_all_questions(questions):
-    """Сохраняет список вопросов обратно в файл"""
-    with open('questions.json', 'w', encoding='utf-8') as f:
-        json.dump(questions, f, ensure_ascii=False, indent=2)
+    """Сохраняет список вопросов в файл (с блокировкой)"""
+    with file_lock:
+        with open('questions.json', 'w', encoding='utf-8') as f:
+            json.dump(questions, f, ensure_ascii=False, indent=2)
 
-def get_unique_questions(num=30):
-    """Извлекает num случайных вопросов из файла и удаляет их"""
+def select_questions_for_game(num=30):
+    """Выбирает num случайных вопросов из пула (не удаляя)"""
     all_q = load_all_questions()
     if len(all_q) < num:
-        # Если осталось меньше num вопросов, можно или остановить игру, или сгенерировать новые
-        # Для простоты используем все оставшиеся
-        selected = all_q.copy()
-        all_q = []
-    else:
-        selected = random.sample(all_q, num)
-        # Удаляем выбранные вопросы из списка
-        for q in selected:
-            all_q.remove(q)
-    save_all_questions(all_q)
-    return selected
+        # Если мало – возвращаем все (игра будет короче, но лучше так, чем с ошибкой)
+        print(f"Предупреждение: в пуле только {len(all_q)} вопросов, игра будет короче.")
+        return all_q.copy()
+    return random.sample(all_q, num)
+
+def delete_used_questions(used_questions):
+    """Удаляет переданный список вопросов из файла"""
+    if not used_questions:
+        return
+    all_q = load_all_questions()
+    used_texts = {q['question'] for q in used_questions}
+    new_q = [q for q in all_q if q['question'] not in used_texts]
+    save_all_questions(new_q)
+    print(f"Удалено {len(used_questions)} вопросов. Осталось {len(new_q)}.")
 
 # ==================== ИГРОВАЯ ЛОГИКА ====================
 ROUND_TIME = 25
@@ -58,6 +72,7 @@ def start_round(room):
     game['player_answers'] = [None, None]
     game['round_start_time'] = time.time()
     game['round_finished'] = False
+
     def timer():
         time.sleep(ROUND_TIME)
         if room in games and games[room].get('round_active'):
@@ -70,6 +85,7 @@ def finish_round(room):
         return
     game['round_active'] = False
     game['round_finished'] = True
+
     correct = game['correct']
     answers = game['player_answers']
     new_scores = game['scores'][:]
@@ -77,6 +93,7 @@ def finish_round(room):
         if ans == correct:
             new_scores[i] += 1
     game['scores'] = new_scores
+
     if 'history' not in game:
         game['history'] = []
     game['history'].append({
@@ -84,6 +101,7 @@ def finish_round(room):
         'answers': answers.copy(),
         'correct': correct
     })
+
     names = game['names']
     messages = []
     for i, ans in enumerate(answers):
@@ -93,11 +111,13 @@ def finish_round(room):
             messages.append(f"{names[i]} ответил неправильно")
         else:
             messages.append(f"{names[i]} не ответил")
+
     game['round_results'] = {
         'messages': messages,
         'correct_text': game['current_question']['options'][correct],
         'scores': new_scores
     }
+
     def next_round():
         time.sleep(PAUSE_TIME)
         if room in games:
@@ -124,6 +144,7 @@ def end_game(room):
         winner = None
         winner_score = scores[0]
         loser_score = scores[1]
+
     history_table = []
     for h in game.get('history', []):
         history_table.append({
@@ -132,11 +153,18 @@ def end_game(room):
             'answer2': h['answers'][1],
             'correct': h['correct']
         })
+
     game['game_over'] = True
     game['winner'] = winner
     game['winner_score'] = winner_score
     game['loser_score'] = loser_score
     game['history_table'] = history_table
+
+    # Удаляем использованные вопросы из глобального пула
+    used = game.get('questions_pool', [])
+    if used:
+        delete_used_questions(used)
+
     def clean():
         time.sleep(10)
         if room in games:
@@ -192,10 +220,10 @@ def join():
     games[room]['players'].append(sid)
     games[room]['names'][1] = name
     if len(games[room]['players']) == 2:
-        # Получаем 30 уникальных вопросов (удаляем из файла)
-        selected_questions = get_unique_questions(30)
-        games[room]['questions_pool'] = selected_questions
-        print(f"Для комнаты {room} выбрано {len(selected_questions)} вопросов, осталось {len(load_all_questions())} в файле")
+        # Выбираем 30 вопросов для этой игры (не удаляем из файла)
+        selected = select_questions_for_game(30)
+        games[room]['questions_pool'] = selected
+        print(f"Для комнаты {room} выбрано {len(selected)} вопросов. Начинаем игру через 2 секунды.")
         def start():
             time.sleep(2)
             if room in games:

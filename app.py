@@ -5,114 +5,52 @@ import threading
 import json
 import random
 import os
-import requests
 
 app = Flask(__name__)
 app.secret_key = 'sse_secret'
 
 games = {}
 
-# ==================== НАСТРОЙКА MISTRAL ====================
-MISTRAL_API_KEY = "hL9pQpCgVBExEc0WoovDAJh73Y8S3w3w"  # 🔴 ВСТАВЬТЕ СВОЙ КЛЮЧ
-MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
+def load_all_questions():
+    """Загружает все вопросы из questions.json"""
+    if not os.path.exists('questions.json'):
+        return []
+    with open('questions.json', 'r', encoding='utf-8') as f:
+        return json.load(f)
 
-# Большой список тем для случайного выбора
-TOPICS = [
-    "история", "наука", "искусство", "спорт", "география", "литература", "кино", 
-    "музыка", "животные", "растения", "технологии", "космос", "мифология", 
-    "кулинария", "политика", "экономика", "психология", "архитектура", 
-    "мода", "автомобили", "компьютерные игры", "астрономия", "биология", 
-    "химия", "физика", "математика", "медицина", "криптовалюты", "блогеры"
-]
+def save_all_questions(questions):
+    """Сохраняет список вопросов обратно в файл"""
+    with open('questions.json', 'w', encoding='utf-8') as f:
+        json.dump(questions, f, ensure_ascii=False, indent=2)
 
-def generate_30_questions():
-    """Генерирует 30 уникальных вопросов через Mistral Large (максимальная случайность)"""
-    # Случайные параметры для разнообразия
-    temperature = 1.2  # максимально допустимое значение (1.2 – предел для Mistral)
-    top_p = 0.95
-    random_seed = random.randint(1, 10_000_000_000)
-    timestamp = int(time.time())
-    
-    # Выбираем 3 случайные темы из списка
-    selected_topics = random.sample(TOPICS, 3)
-    topics_text = ", ".join(selected_topics)
-    
-    # Формируем промпт с требованием уникальности и случайности
-    prompt = (
-        f"Ты — генератор увлекательных вопросов для интеллектуальной викторины-дуэли. Запрос номер {timestamp}.\n"
-        f"Сгенерируй 30 разнообразных интересных вопросов с 4 вариантами ответов.\n"
-        f"Обязательно сосредоточься на следующих темах: {topics_text}. Но можешь добавить и другие темы.\n"
-        "Важно: вопросы должны быть максимально разными, не повторяться, не быть банальными (избегай 'Столица Франции?' или '2+2?').\n"
-        "Старайся придумывать оригинальные, неожиданные вопросы, которые редко встречаются в стандартных викторинах.\n"
-        "Твой ответ должен быть строго в формате JSON: массив из 30 объектов.\n"
-        "Каждый объект: {\"question\": \"текст вопроса\", \"options\": [\"вар1\", \"вар2\", \"вар3\", \"вар4\"], \"correct\": индекс_правильного_ответа (0-3)}.\n"
-        "Не добавляй пояснений, только JSON массив."
-    )
-    
-    headers = {
-        "Authorization": f"Bearer {MISTRAL_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload = {
-        "model": "mistral-large-latest",
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": temperature,
-        "top_p": top_p,
-        "random_seed": random_seed,
-        "max_tokens": 5000
-    }
-    
-    # Повторяем запрос до 2 раз при ошибке
-    for attempt in range(2):
-        try:
-            resp = requests.post(MISTRAL_URL, headers=headers, json=payload, timeout=60)
-            if resp.status_code == 200:
-                data = resp.json()
-                ai_text = data['choices'][0]['message']['content']
-                # Извлекаем JSON
-                start = ai_text.find('[')
-                end = ai_text.rfind(']') + 1
-                if start != -1 and end != 0:
-                    questions = json.loads(ai_text[start:end])
-                    if len(questions) >= 30:
-                        print(f"✅ Сгенерировано {len(questions)} вопросов (seed={random_seed}, темы: {topics_text})")
-                        return questions[:30]
-                    else:
-                        print(f"⚠️ Получено {len(questions)} вопросов, нужно 30. Повторная попытка...")
-                else:
-                    print("⚠️ Не удалось извлечь JSON, повтор...")
-            else:
-                print(f"❌ Ошибка {resp.status_code}: {resp.text[:200]}")
-        except Exception as e:
-            print(f"❌ Исключение: {e}")
-        # Небольшая задержка перед повтором
-        time.sleep(1)
-    
-    # Резервный список (30 простых вопросов) – на случай полного сбоя
-    fallback = [
-        {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
-        {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1},
-        {"question": "Какой цвет получается при смешивании красного и синего?", "options": ["Зелёный", "Фиолетовый", "Оранжевый", "Розовый"], "correct": 1},
-        {"question": "Кто написал «Евгений Онегин»?", "options": ["Лермонтов", "Пушкин", "Толстой", "Достоевский"], "correct": 1},
-        {"question": "Какой океан самый большой?", "options": ["Атлантический", "Индийский", "Тихий", "Северный Ледовитый"], "correct": 2},
-        # ... можно добавить ещё, но для краткости оставим так
-    ]
-    while len(fallback) < 30:
-        fallback.extend(fallback)
-    print("🔄 Используется резервный список вопросов")
-    return fallback[:30]
+def get_unique_questions(num=30):
+    """Извлекает num случайных вопросов из файла и удаляет их"""
+    all_q = load_all_questions()
+    if len(all_q) < num:
+        # Если осталось меньше num вопросов, можно или остановить игру, или сгенерировать новые
+        # Для простоты используем все оставшиеся
+        selected = all_q.copy()
+        all_q = []
+    else:
+        selected = random.sample(all_q, num)
+        # Удаляем выбранные вопросы из списка
+        for q in selected:
+            all_q.remove(q)
+    save_all_questions(all_q)
+    return selected
 
-# ==================== ОСТАЛЬНОЙ КОД (игровая логика) – без изменений ====================
+# ==================== ИГРОВАЯ ЛОГИКА ====================
 ROUND_TIME = 25
 PAUSE_TIME = 5
 
 def start_round(room):
     game = games[room]
     q_idx = game['q_idx']
-    if q_idx >= len(game['questions_pool']):
+    pool = game.get('questions_pool', [])
+    if q_idx >= len(pool):
         end_game(room)
         return
-    q = game['questions_pool'][q_idx]
+    q = pool[q_idx]
     game['current_question'] = q
     game['correct'] = q['correct']
     game['round_active'] = True
@@ -205,6 +143,7 @@ def end_game(room):
             del games[room]
     threading.Thread(target=clean, daemon=True).start()
 
+# ==================== МАРШРУТЫ ====================
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -253,10 +192,10 @@ def join():
     games[room]['players'].append(sid)
     games[room]['names'][1] = name
     if len(games[room]['players']) == 2:
-        # Генерируем 30 уникальных вопросов
-        pool = generate_30_questions()
-        games[room]['questions_pool'] = pool
-        print(f"Сгенерировано {len(pool)} вопросов для комнаты {room}")
+        # Получаем 30 уникальных вопросов (удаляем из файла)
+        selected_questions = get_unique_questions(30)
+        games[room]['questions_pool'] = selected_questions
+        print(f"Для комнаты {room} выбрано {len(selected_questions)} вопросов, осталось {len(load_all_questions())} в файле")
         def start():
             time.sleep(2)
             if room in games:
@@ -295,7 +234,7 @@ def game():
     names = games[room]['names']
     name1 = names[0] if names[0] else "Игрок 1"
     name2 = names[1] if names[1] else "Игрок 2"
-    total = len(games[room].get('questions_pool', [])) if games[room].get('questions_pool') else 30
+    total = len(games[room].get('questions_pool', []))
     return render_template('game.html', sid=sid, name=name, player_idx=player_idx, total_questions=total, name1=name1, name2=name2)
 
 @app.route('/state')

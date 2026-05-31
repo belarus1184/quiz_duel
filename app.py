@@ -3,7 +3,6 @@ import uuid
 import time
 import threading
 import json
-import random
 import os
 
 app = Flask(__name__)
@@ -11,47 +10,31 @@ app.secret_key = 'sse_secret'
 
 games = {}
 
-# ==================== ЗАГРУЗКА ВОПРОСОВ ИЗ ФАЙЛА ====================
-def load_all_questions():
-    """Загружает все вопросы из questions.json (ожидается список словарей)"""
+# ==================== ЗАГРУЗКА ВОПРОСОВ (ПЕРВЫЕ 30) ====================
+def load_questions():
+    """Загружает все вопросы из questions.json, возвращает первые 30 (или сколько есть)"""
     if not os.path.exists('questions.json'):
         # Резервный список на случай отсутствия файла
         return [
             {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
             {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
         ]
-    try:
-        with open('questions.json', 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"Ошибка загрузки questions.json: {e}")
-        return []
+    with open('questions.json', 'r', encoding='utf-8') as f:
+        all_questions = json.load(f)
+    # Берём первые 30 (или меньше, если всего меньше 30)
+    return all_questions[:30]
 
-def select_questions_for_game(num=30):
-    """Выбирает num случайных вопросов из файла, возвращает в порядке возрастания индексов в исходном списке"""
-    all_q = load_all_questions()
-    if len(all_q) < num:
-        # Если в файле меньше вопросов, возвращаем все (порядок сохраняется)
-        return all_q.copy()
-    # Выбираем случайные индексы
-    indices = random.sample(range(len(all_q)), num)
-    # Сортируем индексы по возрастанию
-    indices.sort()
-    # Возвращаем вопросы в порядке их появления в исходном файле
-    return [all_q[i] for i in indices]
-
-# ==================== ИГРОВАЯ ЛОГИКА ====================
+QUESTIONS = load_questions()
 ROUND_TIME = 25
 PAUSE_TIME = 5
 
 def start_round(room):
     game = games[room]
     q_idx = game['q_idx']
-    pool = game.get('questions_pool', [])
-    if q_idx >= len(pool):
+    if q_idx >= len(QUESTIONS):
         end_game(room)
         return
-    q = pool[q_idx]
+    q = QUESTIONS[q_idx]
     game['current_question'] = q
     game['correct'] = q['correct']
     game['round_active'] = True
@@ -147,7 +130,6 @@ def end_game(room):
     game['loser_score'] = loser_score
     game['history_table'] = history_table
 
-    # (Не удаляем вопросы из файла – на Render бесплатного тарифа это не сохранится)
     def clean():
         time.sleep(10)
         if room in games:
@@ -183,8 +165,7 @@ def create():
         'player_answers': [None, None],
         'round_start_time': 0,
         'history': [],
-        'game_over': False,
-        'questions_pool': None
+        'game_over': False
     }
     return redirect(url_for('wait'))
 
@@ -203,10 +184,6 @@ def join():
     games[room]['players'].append(sid)
     games[room]['names'][1] = name
     if len(games[room]['players']) == 2:
-        # Выбираем 30 вопросов, отсортированных по исходному порядку
-        selected = select_questions_for_game(30)
-        games[room]['questions_pool'] = selected
-        print(f"Для комнаты {room} выбрано {len(selected)} вопросов. Начинаем игру через 2 секунды.")
         def start():
             time.sleep(2)
             if room in games:
@@ -245,8 +222,7 @@ def game():
     names = games[room]['names']
     name1 = names[0] if names[0] else "Игрок 1"
     name2 = names[1] if names[1] else "Игрок 2"
-    total = len(games[room].get('questions_pool', []))
-    return render_template('game.html', sid=sid, name=name, player_idx=player_idx, total_questions=total, name1=name1, name2=name2)
+    return render_template('game.html', sid=sid, name=name, player_idx=player_idx, total_questions=len(QUESTIONS), name1=name1, name2=name2)
 
 @app.route('/state')
 def state():
@@ -260,7 +236,7 @@ def state():
         'round_active': game['round_active'],
         'round_finished': game.get('round_finished', False),
         'q_idx': game['q_idx'],
-        'total_questions': len(game.get('questions_pool', [])),
+        'total_questions': len(QUESTIONS),
         'game_over': game.get('game_over', False),
         'winner': game.get('winner'),
         'winner_score': game.get('winner_score'),
@@ -304,8 +280,4 @@ def answer():
     return jsonify({'ok': True})
 
 if __name__ == '__main__':
-    # При запуске можно вывести количество загруженных вопросов
-    all_q = load_all_questions()
-    print(f"Загружено {len(all_q)} вопросов из questions.json")
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)

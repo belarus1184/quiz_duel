@@ -1,73 +1,137 @@
-from flask import Flask, render_template, request, session, redirect, url_for, Response, jsonify
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 import uuid
 import time
 import threading
 import json
 import random
 import os
+import psycopg2
+from psycopg2.extras import Json
 
 app = Flask(__name__)
 app.secret_key = 'sse_secret'
 
-games = {}
-event_streams = {}
+# ==================== ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ ====================
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if not DATABASE_URL:
+    # fallback для локального тестирования
+    DATABASE_URL = "postgresql://postgres:password@localhost:5432/quiz"
 
-def load_questions():
+def get_db_connection():
+    conn = psycopg2.connect(DATABASE_URL)
+    return conn
+
+def init_db():
+    """Создаёт таблицу questions, если её нет"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS questions (
+            id SERIAL PRIMARY KEY,
+            question TEXT NOT NULL,
+            options JSON NOT NULL,
+            correct INTEGER NOT NULL,
+            used BOOLEAN DEFAULT FALSE
+        )
+    ''')
+    conn.commit()
+    cur.close()
+    conn.close()
+
+def load_questions_from_json():
+    """Загружает вопросы из questions.json в БД (только если таблица пуста)"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM questions")
+    count = cur.fetchone()[0]
+    if count > 0:
+        cur.close()
+        conn.close()
+        return
     if not os.path.exists('questions.json'):
-        return [
-            {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
-            {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
-        ]
-    for encoding in ['utf-8', 'cp1251', 'latin-1']:
-        try:
-            with open('questions.json', 'r', encoding=encoding) as f:
-                qlist = json.load(f)
-                random.shuffle(qlist)
-                print(f"Вопросы загружены (кодировка {encoding})")
-                return qlist
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            continue
-    print("Не удалось загрузить questions.json, использую резервный список")
-    return [
-        {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
-        {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
-    ]
+        print("Файл questions.json не найден, БД останется пустой")
+        cur.close()
+        conn.close()
+        return
+    with open('questions.json', 'r', encoding='utf-8') as f:
+        questions = json.load(f)
+    for q in questions:
+        cur.execute(
+            "INSERT INTO questions (question, options, correct) VALUES (%s, %s, %s)",
+            (q['question'], Json(q['options']), q['correct'])
+        )
+    conn.commit()
+    print(f"Загружено {len(questions)} вопросов в БД")
+    cur.close()
+    conn.close()
 
-QUESTIONS = load_questions()
+def select_unused_questions(num=30):
+    """Выбирает num случайных неиспользованных вопросов и помечает их как used"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Выбираем num случайных вопросов, которые ещё не использованы
+    cur.execute(
+        "SELECT id, question, options, correct FROM questions WHERE used = FALSE ORDER BY RANDOM() LIMIT %s",
+        (num,)
+    )
+    rows = cur.fetchall()
+    if not rows:
+        # Если нет ни одного неиспользованного – возвращаем пустой список
+        cur.close()
+        conn.close()
+        return []
+    question_ids = [row[0] for row in rows]
+    # Помечаем их как использованные
+    cur.execute(
+        "UPDATE questions SET used = TRUE WHERE id = ANY(%s)",
+        (question_ids,)
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+    # Формируем список вопросов в нужном формате
+    result = []
+    for row in rows:
+        result.append({
+            'question': row[1],
+            'options': row[2],
+            'correct': row[3]
+        })
+    return result
+
+def delete_used_questions():
+    """Удаляет все использованные вопросы из БД (вызывается после завершения игры)"""
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM questions WHERE used = TRUE")
+    deleted = cur.rowcount
+    conn.commit()
+    cur.close()
+    conn.close()
+    print(f"Удалено {deleted} использованных вопросов из БД")
+    return deleted
+
+# ==================== ИГРОВАЯ ЛОГИКА ====================
+games = {}
 ROUND_TIME = 25
 PAUSE_TIME = 5
-
-def send_event(sid, event, data):
-    if sid not in event_streams:
-        event_streams[sid] = []
-    event_streams[sid].append((event, data))
-
-def broadcast(room, event, data):
-    if room not in games:
-        return
-    for sid in games[room]['players']:
-        send_event(sid, event, data)
 
 def start_round(room):
     game = games[room]
     q_idx = game['q_idx']
-    if q_idx >= len(QUESTIONS):
+    pool = game.get('questions_pool', [])
+    if q_idx >= len(pool):
         end_game(room)
         return
-    q = QUESTIONS[q_idx]
+    q = pool[q_idx]
     game['current_question'] = q
     game['correct'] = q['correct']
     game['round_active'] = True
     game['answered'] = [False, False]
     game['player_answers'] = [None, None]
     game['round_start_time'] = time.time()
-    broadcast(room, 'new_question', {
-        'index': q_idx,
-        'text': q['question'],
-        'options': q['options'],
-        'time': ROUND_TIME,
-        'total': len(QUESTIONS)
-    })
+    game['round_finished'] = False
+
     def timer():
         time.sleep(ROUND_TIME)
         if room in games and games[room].get('round_active'):
@@ -79,6 +143,8 @@ def finish_round(room):
     if not game.get('round_active'):
         return
     game['round_active'] = False
+    game['round_finished'] = True
+
     correct = game['correct']
     answers = game['player_answers']
     new_scores = game['scores'][:]
@@ -86,6 +152,7 @@ def finish_round(room):
         if ans == correct:
             new_scores[i] += 1
     game['scores'] = new_scores
+
     if 'history' not in game:
         game['history'] = []
     game['history'].append({
@@ -93,6 +160,7 @@ def finish_round(room):
         'answers': answers.copy(),
         'correct': correct
     })
+
     names = game['names']
     messages = []
     for i, ans in enumerate(answers):
@@ -102,18 +170,20 @@ def finish_round(room):
             messages.append(f"{names[i]} ответил неправильно")
         else:
             messages.append(f"{names[i]} не ответил")
-    broadcast(room, 'round_result', {
+
+    game['round_results'] = {
         'messages': messages,
-        'scores': new_scores,
-        'names': names,
-        'correct_index': correct,
-        'correct_text': game['current_question']['options'][correct]
-    })
+        'correct_text': game['current_question']['options'][correct],
+        'scores': new_scores
+    }
+
     def next_round():
         time.sleep(PAUSE_TIME)
         if room in games:
             game = games[room]
             game['q_idx'] += 1
+            game['round_finished'] = False
+            game['round_results'] = None
             start_round(room)
     threading.Thread(target=next_round, daemon=True).start()
 
@@ -133,6 +203,7 @@ def end_game(room):
         winner = None
         winner_score = scores[0]
         loser_score = scores[1]
+
     history_table = []
     for h in game.get('history', []):
         history_table.append({
@@ -141,20 +212,23 @@ def end_game(room):
             'answer2': h['answers'][1],
             'correct': h['correct']
         })
-    broadcast(room, 'game_over', {
-        'winner': winner,
-        'winner_score': winner_score,
-        'loser_score': loser_score,
-        'scores': scores,
-        'names': names,
-        'history': history_table
-    })
+
+    game['game_over'] = True
+    game['winner'] = winner
+    game['winner_score'] = winner_score
+    game['loser_score'] = loser_score
+    game['history_table'] = history_table
+
+    # Удаляем использованные вопросы из БД (все, которые были помечены used)
+    delete_used_questions()
+
     def clean():
         time.sleep(10)
         if room in games:
             del games[room]
     threading.Thread(target=clean, daemon=True).start()
 
+# ==================== МАРШРУТЫ ====================
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -175,12 +249,16 @@ def create():
         'scores': [0, 0],
         'q_idx': 0,
         'round_active': False,
+        'round_finished': False,
+        'round_results': None,
         'current_question': None,
         'correct': None,
         'answered': [False, False],
         'player_answers': [None, None],
         'round_start_time': 0,
-        'history': []
+        'history': [],
+        'game_over': False,
+        'questions_pool': None
     }
     return redirect(url_for('wait'))
 
@@ -199,6 +277,10 @@ def join():
     games[room]['players'].append(sid)
     games[room]['names'][1] = name
     if len(games[room]['players']) == 2:
+        # Выбираем 30 неиспользованных вопросов (они автоматически помечаются used)
+        selected = select_unused_questions(30)
+        games[room]['questions_pool'] = selected
+        print(f"Для комнаты {room} выбрано {len(selected)} вопросов из БД")
         def start():
             time.sleep(2)
             if room in games:
@@ -213,7 +295,15 @@ def wait():
         return redirect(url_for('index'))
     if len(games[room]['players']) == 2:
         return redirect(url_for('game'))
-    return render_template('wait.html', room=room, name=session.get('name', ''))
+    invite_link = url_for('index', _external=True) + '?room=' + room
+    return render_template('wait.html', room=room, name=session.get('name', ''), invite_link=invite_link)
+
+@app.route('/check_players')
+def check_players():
+    room = request.args.get('room')
+    if room in games:
+        return {'players': len(games[room]['players'])}
+    return {'players': 0}
 
 @app.route('/game')
 def game():
@@ -229,26 +319,46 @@ def game():
     names = games[room]['names']
     name1 = names[0] if names[0] else "Игрок 1"
     name2 = names[1] if names[1] else "Игрок 2"
-    return render_template('game.html', 
-                           sid=sid, 
-                           name=name, 
-                           player_idx=player_idx, 
-                           total_questions=len(QUESTIONS),
-                           name1=name1,
-                           name2=name2)
+    total = len(games[room].get('questions_pool', []))
+    return render_template('game.html', sid=sid, name=name, player_idx=player_idx, total_questions=total, name1=name1, name2=name2)
 
-@app.route('/stream')
-def stream():
-    sid = request.args.get('sid')
-    if not sid:
-        return "no sid", 400
-    def generate():
-        while True:
-            time.sleep(0.1)
-            if sid in event_streams and event_streams[sid]:
-                event, data = event_streams[sid].pop(0)
-                yield f"event: {event}\ndata: {json.dumps(data)}\n\n"
-    return Response(generate(), mimetype="text/event-stream")
+@app.route('/state')
+def state():
+    room = session.get('room')
+    if not room or room not in games:
+        return jsonify({'error': 'no game'})
+    game = games[room]
+    state = {
+        'players': game['names'],
+        'scores': game['scores'],
+        'round_active': game['round_active'],
+        'round_finished': game.get('round_finished', False),
+        'q_idx': game['q_idx'],
+        'total_questions': len(game.get('questions_pool', [])),
+        'game_over': game.get('game_over', False),
+        'winner': game.get('winner'),
+        'winner_score': game.get('winner_score'),
+        'loser_score': game.get('loser_score'),
+        'history': game.get('history_table', [])
+    }
+    if game['round_active'] and game['current_question']:
+        elapsed = time.time() - game['round_start_time']
+        remaining = max(0, ROUND_TIME - int(elapsed))
+        state['question'] = game['current_question']['question']
+        state['options'] = game['current_question']['options']
+        state['time_left'] = remaining
+        state['correct_index'] = game['correct']
+        state['player_answers'] = game['player_answers']
+    else:
+        state['question'] = None
+        state['options'] = []
+        state['time_left'] = 0
+        state['player_answers'] = [None, None]
+    if game.get('round_results') and not game['round_active']:
+        state['round_results'] = game['round_results']
+    else:
+        state['round_results'] = None
+    return jsonify(state)
 
 @app.route('/answer', methods=['POST'])
 def answer():
@@ -263,8 +373,12 @@ def answer():
         return jsonify({'error': 'round not active'}), 400
     player_idx = 0 if game['players'][0] == sid else 1
     game['player_answers'][player_idx] = answer_idx
-    game['answered'][player_idx] = True
+    if not game['answered'][player_idx]:
+        game['answered'][player_idx] = True
     return jsonify({'ok': True})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
+    init_db()
+    load_questions_from_json()
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)

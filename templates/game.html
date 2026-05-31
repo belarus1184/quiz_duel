@@ -74,6 +74,7 @@
     const sid = "{{ sid }}";
     const myIdx = {{ player_idx }};
     const totalQ = {{ total_questions }};
+    let currentQ = -1;               // текущий индекс вопроса (получаем от сервера)
     let currentQuestion = null;
     let roundActive = false;
     let gameActive = true;
@@ -108,7 +109,7 @@
                     } else {
                         msg = `Итог игры: Игрок ${state.winner} победил со счётом ${state.winner_score} : ${state.loser_score}`;
                     }
-                    let historyHtml = '<div class="final-table"></td><thead><tr><th>Вопрос</th><th>' + state.players[0] + '</th><th>' + state.players[1] + '</th></tr></thead><tbody>';
+                    let historyHtml = '<div class="final-table"><table><thead><tr><th>Вопрос</th><th>' + state.players[0] + '</th><th>' + state.players[1] + '</th></tr></thead><tbody>';
                     for (let q of state.history) {
                         let ans1 = q.answer1;
                         let ans2 = q.answer2;
@@ -127,6 +128,7 @@
 
             if (state.round_active && state.question) {
                 if (currentQuestion !== state.question) {
+                    currentQ = state.q_idx;            // запоминаем индекс вопроса
                     currentQuestion = state.question;
                     roundActive = true;
                     document.getElementById('questionCounter').innerHTML = `Вопрос ${state.q_idx+1} из ${state.total_questions}`;
@@ -139,10 +141,11 @@
                         btn.classList.add('option-btn');
                         btn.onclick = () => {
                             if (!roundActive || !gameActive) return;
+                            // ОТПРАВЛЯЕМ ОТВЕТ С ПЕРЕДАЧЕЙ q_idx
                             fetch('/answer', {
                                 method: 'POST',
                                 headers: {'Content-Type': 'application/json'},
-                                body: JSON.stringify({sid: sid, answer: i})
+                                body: JSON.stringify({sid: sid, answer: i, q_idx: currentQ})
                             });
                             if (selectedBtn) selectedBtn.classList.remove('selected');
                             btn.classList.add('selected');

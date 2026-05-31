@@ -34,8 +34,8 @@ def start_round(room):
     game['current_question'] = q
     game['correct'] = q['correct']
     game['round_active'] = True
-    game['answered'] = [False, False]    # этот флаг больше не блокирует ответы, а только показывает, что игрок дал ХОТЯ БЫ ОДИН ответ
-    game['player_answers'] = [None, None]
+    game['answered'] = [False, False]      # флаг, что игрок дал хотя бы один ответ
+    game['player_answers'] = [None, None]  # последний ответ каждого игрока
     game['round_start_time'] = time.time()
     game['round_finished'] = False
     print(f"[start_round] room={room}, q_idx={q_idx}, correct={game['correct']}")
@@ -60,7 +60,7 @@ def finish_round(room):
         if ans == correct:
             new_scores[i] += 1
     game['scores'] = new_scores
-    print(f"[finish_round] scores: {new_scores}")
+    print(f"[finish_round] answers={answers}, correct={correct}, new_scores={new_scores}")
 
     if 'history' not in game:
         game['history'] = []
@@ -272,18 +272,15 @@ def answer():
     if not game.get('round_active'):
         return jsonify({'error': 'round not active'}), 400
     if game['q_idx'] != q_idx:
-        print(f"[answer] WRONG q_idx: game={game['q_idx']}, received={q_idx}")
+        print(f"[answer] wrong q_idx: game={game['q_idx']}, received={q_idx}")
         return jsonify({'error': 'wrong index'}), 400
     player_idx = 0 if game['players'][0] == sid else 1
-    # Разрешаем менять ответ в любое время – просто перезаписываем
+    # Записываем ответ (разрешаем менять в любое время)
     game['player_answers'][player_idx] = answer_idx
     if not game['answered'][player_idx]:
         game['answered'][player_idx] = True
-    print(f"[answer] {game['names'][player_idx]} set answer {answer_idx} (correct={game['correct']})")
-    # Если оба ответили (хотя бы один раз), завершаем раунд
-    if game['answered'][0] and game['answered'][1]:
-        print(f"[answer] both answered, finishing round")
-        finish_round(room)
+    print(f"[answer] {game['names'][player_idx]} answered {answer_idx} (correct={game['correct']})")
+    # НЕ завершаем раунд досрочно – только по таймеру
     return jsonify({'ok': True})
 
 if __name__ == '__main__':

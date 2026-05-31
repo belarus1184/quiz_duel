@@ -5,114 +5,42 @@ import threading
 import json
 import random
 import os
-import psycopg2
-from psycopg2.extras import Json
 
 app = Flask(__name__)
 app.secret_key = 'sse_secret'
 
-# ==================== ПОДКЛЮЧЕНИЕ К БАЗЕ ДАННЫХ ====================
-DATABASE_URL = os.environ.get('DATABASE_URL')
-if not DATABASE_URL:
-    # fallback для локального тестирования
-    DATABASE_URL = "postgresql://postgres:password@localhost:5432/quiz"
+games = {}
 
-def get_db_connection():
-    conn = psycopg2.connect(DATABASE_URL)
-    return conn
-
-def init_db():
-    """Создаёт таблицу questions, если её нет"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS questions (
-            id SERIAL PRIMARY KEY,
-            question TEXT NOT NULL,
-            options JSON NOT NULL,
-            correct INTEGER NOT NULL,
-            used BOOLEAN DEFAULT FALSE
-        )
-    ''')
-    conn.commit()
-    cur.close()
-    conn.close()
-
-def load_questions_from_json():
-    """Загружает вопросы из questions.json в БД (только если таблица пуста)"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM questions")
-    count = cur.fetchone()[0]
-    if count > 0:
-        cur.close()
-        conn.close()
-        return
+# ==================== ЗАГРУЗКА ВОПРОСОВ ИЗ ФАЙЛА ====================
+def load_all_questions():
+    """Загружает все вопросы из questions.json (ожидается список словарей)"""
     if not os.path.exists('questions.json'):
-        print("Файл questions.json не найден, БД останется пустой")
-        cur.close()
-        conn.close()
-        return
-    with open('questions.json', 'r', encoding='utf-8') as f:
-        questions = json.load(f)
-    for q in questions:
-        cur.execute(
-            "INSERT INTO questions (question, options, correct) VALUES (%s, %s, %s)",
-            (q['question'], Json(q['options']), q['correct'])
-        )
-    conn.commit()
-    print(f"Загружено {len(questions)} вопросов в БД")
-    cur.close()
-    conn.close()
-
-def select_unused_questions(num=30):
-    """Выбирает num случайных неиспользованных вопросов и помечает их как used"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    # Выбираем num случайных вопросов, которые ещё не использованы
-    cur.execute(
-        "SELECT id, question, options, correct FROM questions WHERE used = FALSE ORDER BY RANDOM() LIMIT %s",
-        (num,)
-    )
-    rows = cur.fetchall()
-    if not rows:
-        # Если нет ни одного неиспользованного – возвращаем пустой список
-        cur.close()
-        conn.close()
+        # Резервный список на случай отсутствия файла
+        return [
+            {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
+            {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
+        ]
+    try:
+        with open('questions.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Ошибка загрузки questions.json: {e}")
         return []
-    question_ids = [row[0] for row in rows]
-    # Помечаем их как использованные
-    cur.execute(
-        "UPDATE questions SET used = TRUE WHERE id = ANY(%s)",
-        (question_ids,)
-    )
-    conn.commit()
-    cur.close()
-    conn.close()
-    # Формируем список вопросов в нужном формате
-    result = []
-    for row in rows:
-        result.append({
-            'question': row[1],
-            'options': row[2],
-            'correct': row[3]
-        })
-    return result
 
-def delete_used_questions():
-    """Удаляет все использованные вопросы из БД (вызывается после завершения игры)"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM questions WHERE used = TRUE")
-    deleted = cur.rowcount
-    conn.commit()
-    cur.close()
-    conn.close()
-    print(f"Удалено {deleted} использованных вопросов из БД")
-    return deleted
+def select_questions_for_game(num=30):
+    """Выбирает num случайных вопросов из файла, возвращает в порядке возрастания индексов в исходном списке"""
+    all_q = load_all_questions()
+    if len(all_q) < num:
+        # Если в файле меньше вопросов, возвращаем все (порядок сохраняется)
+        return all_q.copy()
+    # Выбираем случайные индексы
+    indices = random.sample(range(len(all_q)), num)
+    # Сортируем индексы по возрастанию
+    indices.sort()
+    # Возвращаем вопросы в порядке их появления в исходном файле
+    return [all_q[i] for i in indices]
 
 # ==================== ИГРОВАЯ ЛОГИКА ====================
-games = {}
 ROUND_TIME = 25
 PAUSE_TIME = 5
 
@@ -219,9 +147,7 @@ def end_game(room):
     game['loser_score'] = loser_score
     game['history_table'] = history_table
 
-    # Удаляем использованные вопросы из БД (все, которые были помечены used)
-    delete_used_questions()
-
+    # (Не удаляем вопросы из файла – на Render бесплатного тарифа это не сохранится)
     def clean():
         time.sleep(10)
         if room in games:
@@ -277,10 +203,10 @@ def join():
     games[room]['players'].append(sid)
     games[room]['names'][1] = name
     if len(games[room]['players']) == 2:
-        # Выбираем 30 неиспользованных вопросов (они автоматически помечаются used)
-        selected = select_unused_questions(30)
+        # Выбираем 30 вопросов, отсортированных по исходному порядку
+        selected = select_questions_for_game(30)
         games[room]['questions_pool'] = selected
-        print(f"Для комнаты {room} выбрано {len(selected)} вопросов из БД")
+        print(f"Для комнаты {room} выбрано {len(selected)} вопросов. Начинаем игру через 2 секунды.")
         def start():
             time.sleep(2)
             if room in games:
@@ -378,7 +304,8 @@ def answer():
     return jsonify({'ok': True})
 
 if __name__ == '__main__':
-    init_db()
-    load_questions_from_json()
+    # При запуске можно вывести количество загруженных вопросов
+    all_q = load_all_questions()
+    print(f"Загружено {len(all_q)} вопросов из questions.json")
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)

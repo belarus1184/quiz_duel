@@ -10,19 +10,16 @@ app.secret_key = 'sse_secret'
 
 games = {}
 
-# ==================== ЗАГРУЗКА ВОПРОСОВ (ПЕРВЫЕ 30) ====================
 def load_questions():
-    """Загружает все вопросы из questions.json, возвращает первые 30 (или сколько есть)"""
     if not os.path.exists('questions.json'):
-        # Резервный список на случай отсутствия файла
+        # резервный список
         return [
             {"question": "Столица Франции?", "options": ["Лондон", "Берлин", "Париж", "Мадрид"], "correct": 2},
             {"question": "2+2?", "options": ["3", "4", "5", "6"], "correct": 1}
         ]
     with open('questions.json', 'r', encoding='utf-8') as f:
-        all_questions = json.load(f)
-    # Берём первые 30 (или меньше, если всего меньше 30)
-    return all_questions[:30]
+        all_q = json.load(f)
+    return all_q[:30]  # только первые 30
 
 QUESTIONS = load_questions()
 ROUND_TIME = 25
@@ -136,7 +133,6 @@ def end_game(room):
             del games[room]
     threading.Thread(target=clean, daemon=True).start()
 
-# ==================== МАРШРУТЫ ====================
 @app.route('/')
 def index():
     return render_template('index.html')

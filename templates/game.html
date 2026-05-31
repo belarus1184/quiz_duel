@@ -74,7 +74,7 @@
     const sid = "{{ sid }}";
     const myIdx = {{ player_idx }};
     const totalQ = {{ total_questions }};
-    let currentQ = -1;               // текущий индекс вопроса (получаем от сервера)
+    let currentQ = -1;
     let currentQuestion = null;
     let roundActive = false;
     let gameActive = true;
@@ -128,7 +128,7 @@
 
             if (state.round_active && state.question) {
                 if (currentQuestion !== state.question) {
-                    currentQ = state.q_idx;            // запоминаем индекс вопроса
+                    currentQ = state.q_idx;
                     currentQuestion = state.question;
                     roundActive = true;
                     document.getElementById('questionCounter').innerHTML = `Вопрос ${state.q_idx+1} из ${state.total_questions}`;
@@ -141,7 +141,6 @@
                         btn.classList.add('option-btn');
                         btn.onclick = () => {
                             if (!roundActive || !gameActive) return;
-                            // ОТПРАВЛЯЕМ ОТВЕТ С ПЕРЕДАЧЕЙ q_idx
                             fetch('/answer', {
                                 method: 'POST',
                                 headers: {'Content-Type': 'application/json'},

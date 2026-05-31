@@ -34,11 +34,12 @@ def start_round(room):
     game['current_question'] = q
     game['correct'] = q['correct']
     game['round_active'] = True
-    game['answered'] = [False, False]
+    game['answered'] = [False, False]    # этот флаг больше не блокирует ответы, а только показывает, что игрок дал ХОТЯ БЫ ОДИН ответ
     game['player_answers'] = [None, None]
     game['round_start_time'] = time.time()
     game['round_finished'] = False
-    print(f"[start_round] room={room}, q_idx={q_idx}")
+    print(f"[start_round] room={room}, q_idx={q_idx}, correct={game['correct']}")
+
     def timer():
         time.sleep(ROUND_TIME)
         if room in games and games[room].get('round_active'):
@@ -51,6 +52,7 @@ def finish_round(room):
         return
     game['round_active'] = False
     game['round_finished'] = True
+
     correct = game['correct']
     answers = game['player_answers']
     new_scores = game['scores'][:]
@@ -58,6 +60,8 @@ def finish_round(room):
         if ans == correct:
             new_scores[i] += 1
     game['scores'] = new_scores
+    print(f"[finish_round] scores: {new_scores}")
+
     if 'history' not in game:
         game['history'] = []
     game['history'].append({
@@ -65,6 +69,7 @@ def finish_round(room):
         'answers': answers.copy(),
         'correct': correct
     })
+
     names = game['names']
     messages = []
     for i, ans in enumerate(answers):
@@ -74,11 +79,13 @@ def finish_round(room):
             messages.append(f"{names[i]} ответил неправильно")
         else:
             messages.append(f"{names[i]} не ответил")
+
     game['round_results'] = {
         'messages': messages,
         'correct_text': game['current_question']['options'][correct],
         'scores': new_scores
     }
+
     def next_round():
         time.sleep(PAUSE_TIME)
         if room in games:
@@ -105,6 +112,7 @@ def end_game(room):
         winner = None
         winner_score = scores[0]
         loser_score = scores[1]
+
     history_table = []
     for h in game.get('history', []):
         history_table.append({
@@ -113,11 +121,13 @@ def end_game(room):
             'answer2': h['answers'][1],
             'correct': h['correct']
         })
+
     game['game_over'] = True
     game['winner'] = winner
     game['winner_score'] = winner_score
     game['loser_score'] = loser_score
     game['history_table'] = history_table
+
     def clean():
         time.sleep(10)
         if room in games:
@@ -262,15 +272,16 @@ def answer():
     if not game.get('round_active'):
         return jsonify({'error': 'round not active'}), 400
     if game['q_idx'] != q_idx:
-        print(f"[answer] wrong index: game_q_idx={game['q_idx']}, received={q_idx}")
+        print(f"[answer] WRONG q_idx: game={game['q_idx']}, received={q_idx}")
         return jsonify({'error': 'wrong index'}), 400
     player_idx = 0 if game['players'][0] == sid else 1
-    if game['answered'][player_idx]:
-        return jsonify({'error': 'already answered'}), 400
+    # Разрешаем менять ответ в любое время – просто перезаписываем
     game['player_answers'][player_idx] = answer_idx
-    game['answered'][player_idx] = True
-    print(f"[answer] {game['names'][player_idx]} answered {answer_idx}, correct={game['correct']}")
-    if all(game['answered']):
+    if not game['answered'][player_idx]:
+        game['answered'][player_idx] = True
+    print(f"[answer] {game['names'][player_idx]} set answer {answer_idx} (correct={game['correct']})")
+    # Если оба ответили (хотя бы один раз), завершаем раунд
+    if game['answered'][0] and game['answered'][1]:
         print(f"[answer] both answered, finishing round")
         finish_round(room)
     return jsonify({'ok': True})
